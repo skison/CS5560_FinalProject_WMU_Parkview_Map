@@ -1,0 +1,83 @@
+<app-loading [condition]="isLoading"></app-loading>
+
+<app-toast [message]="toast.message"></app-toast>
+
+<div class="card mb-3" *ngIf="!isLoading">
+  <h4 class="card-header">Parkview Map</h4>
+  <div class="card-body">
+  
+	<canvas #canvas style="border: 1px gray solid"></canvas>
+	
+	<div class="card" *ngIf="!isEditing">
+		<h4 class="card-header">Path Data</h4>
+		<div class="card-body">
+			<p *ngIf="startPoint > 0">Selected Start Point: {{startPoint}}</p>
+			<ul>
+				<li *ngFor="let edge of dijkstraNodeEdges[startPoint]">{{startPoint}} to {{edge.getOtherVertexID(startPoint)}}</li>
+			</ul>
+				<p *ngIf="startPoint <= 0">Selected Start Point: None</p>
+			<p *ngIf="endPoint > 0">Selected End Point: {{endPoint}}</p>
+			<ul>
+				<li *ngFor="let edge of dijkstraNodeEdges[endPoint]">{{endPoint}} to {{edge.getOtherVertexID(endPoint)}}</li>
+			</ul>
+				<p *ngIf="endPoint <= 0">Selected End Point: None</p>
+			<p *ngIf="dijkstraPathVertices.length > 0">Final Path ({{dijkstraPathVertices.length}} Nodes): </p>
+			<ul>
+				<li *ngFor="let vertex of dijkstraPathVertices">{{vertex.vertex.id}}</li>
+			</ul>
+		</div>
+	</div>
+	
+	
+	<table class="table table-bordered">
+      <thead class="thead-light">
+        <tr>
+			<th scope="col">Vertex ID</th>
+			<th scope="col">X position</th>
+			<th scope="col">Y position</th>
+			<th scope="col">Floor</th>
+        </tr>
+      </thead>
+      <tbody *ngIf="vertices.length === 0">
+        <tr>
+          <td colspan="5">There are no vertices in the DB.</td>
+        </tr>  
+      </tbody>
+      <tbody>
+        <tr *ngFor="let vertex of vertices">
+			<ng-container>
+				<td>{{vertex.id}}</td>
+				<td>{{vertex.xPos}}</td>
+				<td>{{vertex.yPos}}</td>
+				<td>{{vertex.floor}}</td>
+		  </ng-container>
+        </tr>  
+      </tbody>
+	</table>
+	
+	<table class="table table-bordered">
+      <thead class="thead-light">
+        <tr>
+			<th scope="col">Edge _ID</th>
+			<th scope="col">Node 1</th>
+			<th scope="col">Node 2</th>
+        </tr>
+      </thead>
+      <tbody *ngIf="edges.length === 0">
+        <tr>
+          <td colspan="5">There are no edges in the DB.</td>
+        </tr>  
+      </tbody>
+      <tbody>
+        <tr *ngFor="let edge of edges">
+			<ng-container>
+				<td>{{edge._id}}</td>
+				<td>{{edge.node1}}</td>
+				<td>{{edge.node2}}</td>
+		  </ng-container>
+        </tr>  
+      </tbody>
+	</table>
+    
+  </div>
+</div>
