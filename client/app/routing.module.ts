@@ -23,6 +23,7 @@ const routes: Routes = [
   
    { path: 'credentials', component: CredentialsComponent },
    { path: 'map', component: MapComponent },
+	//{ path: 'getpath', component: PathComponent},
   
   { path: 'register', component: RegisterComponent },
   { path: 'login', component: LoginComponent },

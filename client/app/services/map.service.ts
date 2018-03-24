@@ -2,8 +2,9 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs/Observable';
 
-import { Vertex } from '../shared/models/vertex.model';
-import { Edge } from '../shared/models/edge.model';
+import MapVertex from '../../../shared/models/mapvertex';
+import MapEdge from '../../../shared/models/mapedge';
+import DijkstraMapVertex from '../../../shared/models/dijkstramapvertex';
 
 @Injectable()
 export class MapService {
@@ -11,11 +12,16 @@ export class MapService {
   constructor(private http: HttpClient) { }
 
   
-  getMapVertices(): Observable<Vertex[]>{
-	  return this.http.post<Vertex[]>('/api/getvertices', {});
+  getMapVertices(): Observable<MapVertex[]>{
+	  return this.http.post<MapVertex[]>('/api/getvertices', {});
   }
   
-  getMapEdges(): Observable<Edge[]>{
-	  return this.http.post<Edge[]>('/api/getedges', {});
+  getMapEdges(): Observable<MapEdge[]>{
+	  return this.http.post<MapEdge[]>('/api/getedges', {});
   }
+  
+  getPath(startID: number, endID: number): Observable<DijkstraMapVertex[]>{
+	  return this.http.get<DijkstraMapVertex[]>(`/api/getpath?startID=${startID}&endID=${endID}`, {});
+  }
+  
 }

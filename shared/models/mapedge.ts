@@ -1,6 +1,5 @@
-/*export class Edge {
+export default class MapEdge {
   _id?: string;
   node1?: number;
   node2?: number;
 }
-*/

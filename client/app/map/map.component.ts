@@ -15,8 +15,9 @@ import { AuthService } from '../services/auth.service';
 import { MapService } from '../services/map.service';
 
 import { ToastComponent } from '../shared/toast/toast.component';
-import { Vertex } from '../shared/models/vertex.model';
-import { Edge } from '../shared/models/edge.model';
+import MapVertex from '../../../shared/models/mapvertex';
+import MapEdge from '../../../shared/models/mapedge';
+import DijkstraMapVertex from '../../../shared/models/dijkstramapvertex';
 
 
 @Component({
@@ -26,35 +27,35 @@ import { Edge } from '../shared/models/edge.model';
 })
 export class MapComponent implements OnInit, AfterViewInit {
 	
-	@ViewChild('canvas') public canvas: ElementRef;
+	@ViewChild('canvasVertices') public canvasVerticesLayer: ElementRef;
+	@ViewChild('canvasEdges') public canvasEdgesLayer: ElementRef;
 	
-	private cx: CanvasRenderingContext2D; //handle for drawing to canvas
+	private cxVertices: CanvasRenderingContext2D; //handle for drawing to canvas- vertices layer
+	private cxEdges: CanvasRenderingContext2D; //handle for drawing to canvas- edges layer
+	
+	private canvasElVertices: HTMLCanvasElement;
+	private canvasElEdges: HTMLCanvasElement;
   
-	//Actual vertices array and visual vertices array. They should always be stored in the same order for consistency
-	vertices: Vertex[] = [];
-	canvasVertices: CanvasVertex[] = [];
+	//Actual vertices array and visual vertices array. 
+	vertices: MapVertex[] = []; //stored in whatever order they arrived from the DB
+	canvasVertices: CanvasMapVertex[] = []; //indexed by id
 	
-	//Actual edges array and visual edges array. They should always be stored in the same order for consistency
-	edges: Edge[] = [];
-	canvasEdges: CanvasEdge[] = [];
+	//Actual mapEdges array and visual mapEdges array. 
+	mapEdges: MapEdge[] = []; //stored in whatever order they arrived from the DB
+	canvasEdgesLinked: CanvasMapEdge[][] = []; //first dimension indexed by vertex id, second dimension contains all edges for said vertex- this leads to some intentional redundancy
+	canvasEdgesUnlinked: CanvasMapEdge[] = []; //all the same nodes as above, but not indexed by vertex; no redundancy
 	
-	/*Multidimensional array used for graph calculations (specifically dijkstra's algorithm)
-	The first dimension stores the id of each node in ascending order, for quick access
-	The second dimension stores references to every CanvasEdge object connected to the associated node, also for quick access*/
-	dijkstraNodeEdges: CanvasEdge[][] = [];
+	//Path received from the server after a call to getPath(); consists of DijkstraMapVertex objects
+	dijkstraPath: DijkstraMapVertex[] = [];
+	dijkstraPathTEMP: DijkstraMapVertex[] = []; //data-only version obtained after server call- objects have to be read to the real dijkstraPath array in order to be able to use their functions
 	
-	//These arrays store the final path taken to get from a start point to an end point
-	dijkstraPathEdges: CanvasEdge[] = [];
-	dijkstraPathVertices: CanvasVertex[] = [];
-	
-  
 	isLoading = true;
 	isEditing = false;
 	
-	gotMapVertices = false;
-	gotMapEdges = false;
-	hasCreatedMap = false;
-	isViewInitialized = false;
+	isGettingPath = false; //set to true when waiting for path from server
+	
+	mapElementsObtained = 0; //increment either when vertices and/or edges have been obtained. Once this ==2, the map can be created
+	mapReadyCounter = 0; //increment after the map has been created and after the view has been initialized. Once this ==2, the map can be drawn
 	
 	/*start and end points (IDs of vertices). Will be set to >0 when in use, or <=0 when unused*/
 	startPoint = -1;
@@ -74,21 +75,132 @@ export class MapComponent implements OnInit, AfterViewInit {
 	}
 	/*Triggers once view has finished loading*/
 	ngAfterViewInit() {
-		
-		const canvasEl: HTMLCanvasElement = this.canvas.nativeElement;
-		console.log(this.canvas.nativeElement);
+		//console.log("starting ngAfterViewInit");
+		this.canvasElVertices = this.canvasVerticesLayer.nativeElement;
+		this.canvasElEdges = this.canvasEdgesLayer.nativeElement;
+		//console.log(this.canvas.nativeElement);
 		
 		/*default canvas size; could be made responsive by dynamically changing these on screen size*/
-		canvasEl.width = 800;
-		canvasEl.height = 450;
+		this.canvasElVertices.width = 800;
+		this.canvasElVertices.height = 450;
 		
-		this.cx = canvasEl.getContext('2d');
+		this.canvasElEdges.width = 800;
+		this.canvasElEdges.height = 450;
+		
+		this.cxVertices = this.canvasElVertices.getContext('2d');
+		this.cxEdges = this.canvasElEdges.getContext('2d');
+		
 		//this.cx.translate(0.5, 0.5); //allow for smoother lines (less unnecessary anti-aliasing)
 		
-		this.captureEvents(canvasEl);
-		this.isViewInitialized = true;
-		this.drawMap(); //redundant attempt to draw map;
+		this.captureEvents(this.canvasElVertices);
+		//this.captureEvents()
 		
+		//this.isViewInitialized = true;
+		this.mapReadyCounter++;
+		//console.log("ngAfterViewInit complete");
+		if(this.mapReadyCounter == 2){
+			this.drawMap(); //redundant attempt to draw map;
+		}
+		
+	}
+	
+	
+	
+	/*Get all vertices from the server*/
+	getMapVertices(){
+		this.mapService.getMapVertices().subscribe(
+			data => this.vertices = data,
+			error => console.log(error),
+			() => {this.mapElementsObtained++; if(this.mapElementsObtained == 2){this.createMap();}}
+		);
+	}
+	/*Get all mapEdges from the server*/
+	getMapEdges(){
+		this.mapService.getMapEdges().subscribe(
+			data => this.mapEdges = data,
+			error => console.log(error),
+			() => {this.mapElementsObtained++; if(this.mapElementsObtained == 2){this.createMap();}}
+		);
+	}
+	/*Create the visual map model. Requires the map's vertices and mapEdges to both be loaded*/
+	createMap(){
+		//console.log("creating map");
+		var parent = this; //store reference to variables from this object
+		
+		//console.log("sorted vertices");
+		
+		//create canvasVertices
+		this.vertices.forEach(function (mapVertex) {
+			parent.canvasVertices[mapVertex.id] = (new CanvasMapVertex(parent.cxVertices, mapVertex));
+		}); 
+		
+		
+		//create canvasEdges
+		this.mapEdges.forEach(function (mapEdge) {
+			var firstNode = parent.canvasVertices[mapEdge.node1];
+			var secondNode = parent.canvasVertices[mapEdge.node2];
+			var thisCanvasMapEdge = new CanvasMapEdge(parent.cxEdges, firstNode, secondNode);
+			
+			parent.canvasEdgesUnlinked.push(thisCanvasMapEdge);//push MapEdge to unlinked array
+			
+			//initialize linked subarrays if they don't already exist
+			if(parent.canvasEdgesLinked[mapEdge.node1] == null){parent.canvasEdgesLinked[mapEdge.node1] = [];}
+			if(parent.canvasEdgesLinked[mapEdge.node2] == null){parent.canvasEdgesLinked[mapEdge.node2] = [];}
+			//push the MapEdge to the linked arrays
+			parent.canvasEdgesLinked[mapEdge.node1].push(thisCanvasMapEdge);
+			parent.canvasEdgesLinked[mapEdge.node2].push(thisCanvasMapEdge);
+		}); 
+		
+		this.mapReadyCounter++;
+		//console.log("createMap complete");
+		if(this.mapReadyCounter == 2){
+			this.drawMap(); //redundant attempt to draw map;
+		}
+		
+	}
+	/*draw the entire map to the screen. Requires the map model to have been constructed and the view initialized*/
+	drawMap(){
+		//console.log("drawing map");
+		
+		//clear layers first
+		this.cxEdges.clearRect(0, 0, this.canvasElEdges.width, this.canvasElEdges.height);
+		this.cxVertices.clearRect(0, 0, this.canvasElVertices.width, this.canvasElVertices.height);
+		
+		this.canvasEdgesUnlinked.forEach(function (canvasMapEdge) {
+			canvasMapEdge.draw();
+		}); 
+		
+		this.canvasVertices.forEach(function (canvasMapVertex) {
+			canvasMapVertex.draw();
+		}); 
+		
+		//window.requestAnimationFrame(this.drawMap.bind(this));
+	}
+	/*Just draw the edges layer*/
+	drawEdgesLayer()
+	{
+		//clear layer first
+		this.cxEdges.clearRect(0, 0, this.canvasElEdges.width, this.canvasElEdges.height);
+		
+		this.canvasEdgesUnlinked.forEach(function (canvasMapEdge) {
+			canvasMapEdge.draw();
+		}); 
+	}
+	/*Just draw the vertices layer*/
+	drawVerticesLayer()
+	{
+		//clear layer first
+		this.cxVertices.clearRect(0, 0, this.canvasElVertices.width, this.canvasElVertices.height);
+		
+		this.canvasVertices.forEach(function (canvasMapVertex) {
+			canvasMapVertex.draw();
+		}); 
+	}
+	/*Animate a selected node*/
+	animateNodeExpand()
+	{
+		this.drawVerticesLayer();
+		window.requestAnimationFrame(this.animateNodeExpand.bind(this));
 	}
 	
 	
@@ -136,84 +248,70 @@ export class MapComponent implements OnInit, AfterViewInit {
 	{
 		var parent = this; //store reference to variables from this object
 		
-		this.canvasVertices.forEach(function (canvasVertex) {
+		this.canvasVertices.forEach(function (canvasMapVertex) {
 			//console.log("Checking for click!");
-			if(canvasVertex.isPointOver(newX, newY))//clicked on this node
+			if(canvasMapVertex.isPointOver(newX, newY))//clicked on this node
 			{
-				if(!canvasVertex.getIsSelected())//not yet selected; so select
+				if(!canvasMapVertex.getIsSelected())//not yet selected; so select
 				{
-					if(parent.startPoint < 1 && typeof canvasVertex.vertex.id === "number")
+					if(parent.startPoint < 1 && typeof canvasMapVertex.mapVertex.id === "number")
 					{
-						parent.startPoint = canvasVertex.vertex.id;//set this as start point
+						parent.startPoint = canvasMapVertex.mapVertex.id;//set this as start point
 						
-						//draw connecting edges as selectEdge
-						/*parent.dijkstraNodeEdges[parent.startPoint].forEach(function (edge) {
-							edge.selectEdge();
-						});*/
-						
-						canvasVertex.drawSelectedStart();
-						canvasVertex.setIsSelected(true);
-						
+						canvasMapVertex.selectMapVertex(true);
+						parent.drawVerticesLayer();
+						//parent.animateNodeExpand();
 						parent.toast.setMessage('Point ' + parent.startPoint + ' selected as starting point!', 'success');
 						
-						if(parent.endPoint > 0) //only run if possible
+						if(parent.endPoint > 0) //only activate if both points are set
 						{
 							//finally run dijkstra's algorithm
-							parent.dijkstra(canvasVertex, parent.canvasVertices[parent.canvasVertices.map(elem => elem.vertex.id).indexOf(parent.endPoint)]);
+							//console.log("Getting new path");
+							parent.hideExtraVertices();
+							parent.drawVerticesLayer();
+							parent.getPath();
 						}
 					}
-					else if(parent.endPoint < 1 && typeof canvasVertex.vertex.id === "number")
+					else if(parent.endPoint < 1 && typeof canvasMapVertex.mapVertex.id === "number")
 					{
-						parent.endPoint = canvasVertex.vertex.id;//set this as end point
+						parent.endPoint = canvasMapVertex.mapVertex.id;//set this as end point
 						
-						//draw connecting edges as selectEdge
-						/*parent.dijkstraNodeEdges[parent.endPoint].forEach(function (edge) {
-							edge.selectEdge();
-						});*/
-						canvasVertex.drawSelectedEnd();
-						canvasVertex.setIsSelected(true);
-						parent.toast.setMessage('Point ' + parent.endPoint + ' selected as ending point- BEGINNING PATHFINDING!', 'success');
+						canvasMapVertex.selectMapVertex(false);
+						parent.drawVerticesLayer();
+						//parent.animateNodeExpand();
+						parent.toast.setMessage('Point ' + parent.endPoint + ' selected as ending point!', 'success');
 						
-						if(parent.startPoint > 0) //only run if possible
+						if(parent.startPoint > 0) //only activate if both points are set
 						{
 							//finally run dijkstra's algorithm
-							parent.dijkstra(parent.canvasVertices[parent.canvasVertices.map(elem => elem.vertex.id).indexOf(parent.startPoint)], canvasVertex);
+							//console.log("Getting new path");
+							parent.hideExtraVertices();
+							parent.drawVerticesLayer();
+							parent.getPath();
 						}
 					}
 					else{}
 				}
 				else //already selected
 				{
-					if(parent.endPoint == canvasVertex.vertex.id)
+					if(parent.endPoint == canvasMapVertex.mapVertex.id)
 					{
-						//draw connecting edges as deselectEdge
-						/*parent.dijkstraNodeEdges[parent.endPoint].forEach(function (edge) {
-							edge.deselectEdge();
-						});*/
-						
-						canvasVertex.drawNormal();
-						canvasVertex.drawHovered();
-						canvasVertex.setIsSelected(false);;
+						canvasMapVertex.deselectMapVertex();
+						parent.drawVerticesLayer();
 						parent.endPoint = -1;
-						parent.toast.setMessage('Point ' + canvasVertex.vertex.id + ' deselected as ending point!', 'danger');
+						parent.toast.setMessage('Point ' + canvasMapVertex.mapVertex.id + ' deselected as ending point!', 'danger');
 						
-						if(parent.startPoint > 0){parent.undoDijkstra();}//only reset if necessary
+						if(parent.startPoint > 0){parent.undoPath();}//only reset if necessary
 						
 					}
-					else if(parent.startPoint == canvasVertex.vertex.id)
+					else if(parent.startPoint == canvasMapVertex.mapVertex.id)
 					{
-						//draw connecting edges as deselectEdge
-						/*parent.dijkstraNodeEdges[parent.startPoint].forEach(function (edge) {
-							edge.deselectEdge();
-						});*/
-						
-						canvasVertex.drawNormal();
-						canvasVertex.drawHovered();
-						canvasVertex.setIsSelected(false);
+						canvasMapVertex.deselectMapVertex();
+						parent.drawVerticesLayer();
 						parent.startPoint = -1;
-						parent.toast.setMessage('Point ' + canvasVertex.vertex.id + ' deselected as starting point!', 'danger');
+						parent.toast.setMessage('Point ' + canvasMapVertex.mapVertex.id + ' deselected as starting point!', 'danger');
 						
-						if(parent.endPoint > 0){parent.undoDijkstra();}//only reset if necessary
+						if(parent.endPoint > 0){parent.undoPath();}//only reset if necessary
 					}
 					else{}
 				}
@@ -223,274 +321,130 @@ export class MapComponent implements OnInit, AfterViewInit {
 	/*Check map points for hover*/
 	checkForHover(newX: number, newY: number)
 	{
-		this.canvasVertices.forEach(function (canvasVertex) {
+		var parent = this; //store reference to variables from this object
+		
+		this.canvasVertices.forEach(function (canvasMapVertex) {
 			//console.log("Checking for hover!");
-			if(!canvasVertex.isSelected)//not yet selected
+			if(!canvasMapVertex.isSelected)//not yet selected
 			{
-				if(canvasVertex.isPointOver(newX, newY))
+				if(canvasMapVertex.isPointOver(newX, newY))
 				{
-					//console.log("Hovering!");
-					//console.log(this.vertex.id);
-					canvasVertex.drawHovered();
+					if(!canvasMapVertex.getIsHovered())
+					{
+						canvasMapVertex.hoverMapVertex();
+						parent.drawVerticesLayer();
+					}
 				}
-				else
+				else if(canvasMapVertex.getIsHovered())
 				{
-					canvasVertex.drawNormal();
+					canvasMapVertex.unhoverMapVertex();
+					parent.drawVerticesLayer();
 				}
 			}
 		});
 	}
 	
 	
-	//Redraw normal paths; remove the highlighted paths made by dijkstra's algorithm
-	private undoDijkstra()
+	//hide all vertices that are not selected
+	private hideExtraVertices()
 	{
-		this.dijkstraPathEdges.forEach(function (dEdge) {
-			dEdge.deselectEdge();
-		});
-	}
-	//Run dijkstra's algorithm for pathfinding; this function initializes stuff before the actual algorithm runs in dijkstraLoop()
-	dijkstra(newStartPoint: CanvasVertex, newEndPoint: CanvasVertex)
-	{
-		console.log("Starting pathfinding from " + newStartPoint.vertex.id + " to " + newEndPoint.vertex.id + ".");
-		
-		//start by initializing the node/edge data
-		this.canvasVertices.forEach(function (canvasVertex) {
-			//console.log("drawing vertex");
-			canvasVertex.resetTotalDistance(); //reset all total distances to infinity
-			canvasVertex.resetParentID(); //reset all parent Id's to non-valid numbers
-			canvasVertex.resetMinDistanceFound(); //reset all total distances to infinity
+		//console.log("hiding extra vertices");
+		this.canvasVertices.forEach(function (canvasMapVertex) {
+			if(!canvasMapVertex.getIsSelected()){canvasMapVertex.hideMapVertex();}
 		}); 
-		/*empty path arrays*/
-		this.dijkstraPathEdges = [];
-		this.dijkstraPathVertices = [];
-		/*this.dijkstraNodeEdges.forEach(function (dEdgeArray) {
-			dEdgeArray.forEach(function (dEdge) {
-				dEdge.resetMinDistanceFound(); //reset all total distances to infinity
-			}); 
-		}); */
-		
-		//set start point's total distance to 0
-		newStartPoint.totalDistance = 0;
-		
-		//start recursive dijkstra loop with start point's id as well as startpoint & endpoint
-		this.dijkstraLoop(newStartPoint.vertex.id, newStartPoint, newEndPoint);
-		
 	}
-	//Recursive loop that goes through all the edges associated with this vertex
-	private dijkstraLoop(curID: number, startPoint: CanvasVertex, endPoint: CanvasVertex)
+	
+	
+	//show all vertices
+	private showAllVertices()
 	{
-		//var parent = this; //store reference to variables from this object
-		//console.log("Dijkstra loop for " + curID);
-		
-		this.dijkstraNodeEdges[curID].forEach(function (dEdge){
-			//console.log(curID + " => " + dEdge.getOtherVertexID(curID));
-			//console.log(dEdge.getOtherVertexFromID(curID));
-			
-			var thisVertex = dEdge.getVertexFromID(curID);
-			var otherVertex = dEdge.getOtherVertexFromID(curID);
-			
-			//console.log("Distances: " + thisVertex.getTotalDistance() + " + " + dEdge.getDistance() + " ? " + otherVertex.getTotalDistance());
-			if((thisVertex.getTotalDistance() + dEdge.getDistance()) < otherVertex.getTotalDistance())//new, smaller value for node
-			{
-				otherVertex.setTotalDistance(thisVertex.getTotalDistance() + dEdge.getDistance()); //set new, smaller distance
-				otherVertex.setParentID(curID); //set parent node
-				//console.log("Smaller! New distance: " + otherVertex.getTotalDistance() + " from parent " + otherVertex.getParentID());
-			}
-		});
-		
-		//Now find the node with the lowest total distance that doesn't already have minDistanceFound set!
-		var nextID = -1;
-		var lowestVal = Infinity;
-		this.canvasVertices.forEach(function (canvasVertex) {
-			//canvasVertex.resetTotalDistance(); //reset all total distances to infinity
-			if(!canvasVertex.getMinDistanceFound() && canvasVertex.getTotalDistance() < lowestVal) //validity check
-			{
-				nextID = canvasVertex.vertex.id;
-				lowestVal = canvasVertex.getTotalDistance();
-			}
+		this.canvasVertices.forEach(function (canvasMapVertex) {
+			canvasMapVertex.showMapVertex();
 		}); 
-		
-		/*The end of the path has been found!*/
-		if(endPoint.getMinDistanceFound() || nextID <= 0)
-		{
-			console.log("Final Path found!");
-			var parent = this; //store reference to variables from this object
-			/*dijkstraPathEdges = [];
-			dijkstraPathVertices = [];*/
-			/*push vertices and edges to path arrays*/
-			var curNode = endPoint;
-			var newCurNode = null;
-			while(curNode.vertex.id != startPoint.vertex.id)
+	}
+	
+	
+	/*Redraw normal paths; remove the highlighted paths made by dijkstra's algorithm*/
+	private undoPath()
+	{
+		//console.log("Undoing dijkstra path!");
+		var parent = this; //store reference to variables from this object
+		this.dijkstraPath.forEach(function (dNode) {
+			if(dNode.getParentID() > 0)//only check edges if there is a parent (so not the start node)
 			{
-				//console.log("final loop, curID: " + curNode.vertex.id + ", startID: " + startPoint.vertex.id);
-				this.dijkstraPathVertices.push(curNode);
-				//curNode = this.canvasVertices[this.canvasVertices.map(elem => elem.vertex.id).indexOf(curNode.getParentID())];
-				//console.log("dEdges for " + curNode.vertex.id + ", w/parent " + curNode.getParentID() + ": ");
-				//console.log(curNode);
-				this.dijkstraNodeEdges[curNode.vertex.id].forEach(function (dEdge) {
-					//console.log(dEdge);
-					if(dEdge.node1.vertex.id == curNode.getParentID()){newCurNode = dEdge.node1; parent.dijkstraPathEdges.push(dEdge);}
-					else if(dEdge.node2.vertex.id == curNode.getParentID()){newCurNode = dEdge.node2; parent.dijkstraPathEdges.push(dEdge);}
+				//go through this node's edges, find the right one, and select it
+				parent.canvasEdgesLinked[dNode.getID()].forEach(function (cEdge) {
+					if(cEdge.hasTheseVertices(dNode.getID(), dNode.getParentID()))
+					{
+						cEdge.deselectMapEdge();
+					}
 				});
-				//console.log(newCurNode);
-				curNode = newCurNode;
 			}
-			//Push the final node to the path
-			this.dijkstraPathVertices.push(curNode);
-			
-			console.log("Final path:");
-			console.log(this.dijkstraPathVertices);
-			console.log(this.dijkstraPathEdges);
-			
-			this.dijkstraPathEdges.forEach(function (dEdge) {
-				dEdge.selectEdge();
-			});
-			
-		}
-		else //not found yet, so continue
-		{
-			var nextNode = this.canvasVertices[this.canvasVertices.map(elem => elem.vertex.id).indexOf(nextID)];
-			nextNode.setMinDistanceFound();//This node no longer needs to be traveled to
-			
-			//start the cycle again
-			this.dijkstraLoop(nextID, startPoint, endPoint);
-		}
+		});
 		
+		this.dijkstraPath = []; //remove path data
+		this.drawEdgesLayer();
+		
+		this.showAllVertices();
+		this.drawVerticesLayer();
 	}
 	
 	
-	/*Return array of indexes of the edges array whose node1's equal the input node's id*/
-	getEdgeIndexesForVertex(nodeID) {
-		var indexes = [], i;
-		for(i = 0; i < this.edges.length; i++)
-		{
-			//console.log(this.edges[i].node1 + ", " + nodeID);
-			if (this.edges[i].node1 === nodeID) {indexes.push(i);}
-		}
-			
-		return indexes;
-	}
-	
-	/*Return array of edges where the first node equals this node ID*/
-	getEdgesForVertex(nodeID) {
-		var newEdges = [], i;
-		for(i = 0; i < this.edges.length; i++)
-		{
-			//console.log(this.edges[i].node1 + ", " + nodeID);
-			if (this.edges[i].node1 === nodeID) {newEdges.push(this.edges[i]);}
-		}
-			
-		return newEdges;
-	}
-	
-	
-	/*Get all vertices from the server*/
-	getMapVertices(){
-		this.mapService.getMapVertices().subscribe(
-			data => this.vertices = data,
+	/*Get fastest path between 2 points as an array of nodes from the server*/
+	getPath(){
+		this.isGettingPath = true;
+		this.mapService.getPath(this.startPoint, this.endPoint).subscribe(
+			data => this.dijkstraPathTEMP = data,
 			error => console.log(error),
-			() => {this.gotMapVertices = true; this.createMap();}//console.log("got vertices")
+			() => {this.updatePath(); this.isGettingPath = false;}
 		);
 	}
-	/*Get all edges from the server*/
-	getMapEdges(){
-		this.mapService.getMapEdges().subscribe(
-			data => this.edges = data,
-			error => console.log(error),
-			() => {this.gotMapEdges = true; this.createMap();}//console.log("got edges")
-		);
-	}
-	/*Create the visual map model. Requires the map's vertices and edges to both be loaded*/
-	createMap(){
-		if(this.gotMapVertices && this.gotMapEdges)
-		{
-			console.log("creating map");
-			var parent = this; //store reference to variables from this object
-			
-			//First, sort the edges array so that node1 only increases; allows for easier pathfinding
-			this.edges.sort((a, b) => a.node1 < b.node1 ? -1 : a.node1 > b.node1 ? 1 : 0)
-			//Also sort the vertices by id just in case (should already be sorted)
-			this.vertices.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-			
-			
-			//create canvasVertices
-			this.vertices.forEach(function (vertex) {
-				//console.log(vertex);
-				//canvasVertices
-				if(typeof vertex.xPos === 'number' && typeof vertex.yPos === 'number')
-				{
-					//console.log("pushing vertex");
-					parent.canvasVertices.push(new CanvasVertex(parent.cx, vertex));
-				}
-			}); 
-			
-			
-			//create canvasEdges and dijkstraNodeEdges
-			this.edges.forEach(function (edge) {
-				//canvasEdges
-				//var firstNode = parent.vertices[parent.vertices.map(elem => elem.id).indexOf(edge.node1)];
-				//var secondNode = parent.vertices[parent.vertices.map(elem => elem.id).indexOf(edge.node2)];
-				var firstNode = parent.canvasVertices[parent.canvasVertices.map(elem => elem.vertex.id).indexOf(edge.node1)];
-				var secondNode = parent.canvasVertices[parent.canvasVertices.map(elem => elem.vertex.id).indexOf(edge.node2)];
-				var thisCanvasEdge = new CanvasEdge(parent.cx, firstNode, secondNode);
-				//var thisCanvasEdge = new CanvasEdge(parent.cx, canvasVertices.  firstNode, secondNode);
-				parent.canvasEdges.push(thisCanvasEdge);
-				
-				//console.log("Node ids: " + firstNode.vertex.id + ", " + secondNode.vertex.id + ";");
-				
-				//dijkstraNodeEdges
-				//initialize subarrays if they don't already exist
-				if(parent.dijkstraNodeEdges[firstNode.vertex.id] == null){parent.dijkstraNodeEdges[firstNode.vertex.id] = [];}
-				if(parent.dijkstraNodeEdges[secondNode.vertex.id] == null){parent.dijkstraNodeEdges[secondNode.vertex.id] = [];}
-				
-				//create the new edge
-				//var dEdge = new DijkstraNodeEdge(thisCanvasEdge);
-				
-				//push the edge to the arrays
-				parent.dijkstraNodeEdges[firstNode.vertex.id].push(thisCanvasEdge);
-				parent.dijkstraNodeEdges[secondNode.vertex.id].push(thisCanvasEdge);
-			}); 
-			
-			
-			//For debugging, print out dijkstraNodeEdges array
-			console.log(this.dijkstraNodeEdges);
-			
-			this.hasCreatedMap = true;
-			this.drawMap(); //redundant attempt to draw map;
-		}
-	}
-	
-	
-	/*draw the map to the screen. Requires the map model to have been constructed and the view initialized*/
-	drawMap(){
-		if(this.isViewInitialized && this.hasCreatedMap)
-		{
-			console.log("drawing map");
-			var parent = this; //store reference to variables from this object
-			
-			this.canvasEdges.forEach(function (canvasEdge) {
-				//console.log(edge);
-				//console.log(edge.node1);
-				
-				canvasEdge.draw();
-			}); 
-			
-			this.canvasVertices.forEach(function (canvasVertex) {
-				//console.log("drawing vertex");
-				canvasVertex.drawNormal();
-			}); 
-			
-		}
+	/*Update the fastest path on the map*/
+	updatePath(){
+		//console.log("Updating new fastest path");
+		var parent = this; //store reference to variables from this object
+		
+		this.dijkstraPath = []; //remove path data
+		
+		this.dijkstraPathTEMP.forEach(function (dNode) {
+			var newDNode = new DijkstraMapVertex(dNode.vertex);
+			Object.assign(newDNode, dNode);//assign the node object so that its functions can be used
+			parent.dijkstraPath.push(newDNode);
+			//console.log(newDNode);
+		});
+		
+		this.dijkstraPath.forEach(function (dNode) {
+			//console.log(dNode);
+			if(dNode.getParentID() > 0)//only check edges if there is a parent (so not the start node)
+			{
+				//go through this node's edges, find the right one, and select it
+				parent.canvasEdgesLinked[dNode.getID()].forEach(function (cEdge) {
+					if(cEdge.hasTheseVertices(dNode.getID(), dNode.getParentID()))
+					{
+						cEdge.selectMapEdge();
+					}
+				});
+			}
+		});
+		
+		this.drawEdgesLayer();
 	}
 }
 
 
-/*Visual representation of vertices--- ALSO used in dijkstra's algorithm by storing a 'totalDistance' variable*/
-class CanvasVertex{
+
+
+
+
+
+
+
+
+/*Visual representation of vertices*/
+class CanvasMapVertex{
 	
 	ctx: CanvasRenderingContext2D;
-	vertex: Vertex;
+	mapVertex: MapVertex;
 	zoom: number;
 	color: string;
 	selectStartColor: string;
@@ -499,67 +453,42 @@ class CanvasVertex{
 	backColor: string;
 	circleSize: number;
 	textColor: string;
-	totalDistance: number;
-	private minDistanceFound: boolean; //set to true when this edge no longer needs to be traveled
-	private parentID: number;//id of the vertex that came before (used to trace path throughout algorithm)
 	
 	isSelected: boolean;
+	isHovered: boolean;
+	isStartPoint: boolean; //true if start point, false if end point (only relevent if isSelected)
+	isHidden: boolean; //true to hide this point (don't draw it)
 	
-	constructor(_ctx: CanvasRenderingContext2D, _vertex: Vertex)
+	constructor(_ctx: CanvasRenderingContext2D, _mapVertex: MapVertex)
 	{
 		this.ctx = _ctx;
-		this.vertex = _vertex;
+		this.mapVertex = _mapVertex;
 		
 		this.zoom = 10; //multiplier for zooming in
 		this.color = '#1158ff'; //default color
-		this.hoverColor = '#1a27ba'; //color when hovering over
+		this.hoverColor = '#1158ff'//'#1a27ba'; //color when hovering over
 		this.selectStartColor = '#29f24d'; //color when selected as starting point
-		this.selectEndColor = '#ff1414'; //color when selected as ending point
+		this.selectEndColor = '#ff940a'//'#ff1414'; //color when selected as ending point
 		this.backColor = '#000000'; //background color (outline)
 		this.textColor = '#ffffff'; //color of the text
 		this.circleSize = 15; //size of the circle in px
 		
 		this.isSelected = false;
-		this.resetTotalDistance();
-		this.resetParentID();//initialize parent ID
-		this.resetMinDistanceFound();
-		
-		//just for fun testing. TODO: remove!
-		//this.vertex.xPos = Math.random()*80;
-		//this.vertex.yPos = Math.random()*45;
+		this.isHovered = false;
+		this.isStartPoint = true; 
+		this.isHidden = false;
 	}
-	
-	public resetMinDistanceFound() {this.minDistanceFound = false;} //init to false
-	public getMinDistanceFound() {return this.minDistanceFound;}
-	public setMinDistanceFound() {this.minDistanceFound = true;}
-	
-	public resetParentID() {this.parentID = -1;} //initialize to a negative number so we know it's not set
-	public setParentID(newParentID: number) {this.parentID = newParentID;}
-	public getParentID() {return this.parentID;}
-	
-	/*set total distance to infinity (largest number possible); useful for dijkstra's algorithm*/
-	public resetTotalDistance()
-	{
-		this.totalDistance = Infinity;
-		//console.log("Reset total distance to " + this.totalDistance);
-	}
-	
-	public setTotalDistance(newDistance: number) {this.totalDistance = newDistance;}
-	public getTotalDistance(){return this.totalDistance;}
 	
 	/*Return true if point exists within this circle, or false otherwise*/
 	public isPointOver(newX: number, newY: number){ 
-		return (((newX - this.vertex.xPos*this.zoom)**2) + ((newY - this.vertex.yPos*this.zoom)**2) <= (this.circleSize**2)); 
+		return (((newX - this.mapVertex.xPos*this.zoom)**2) + ((newY - this.mapVertex.yPos*this.zoom)**2) <= (this.circleSize**2)); 
 	}
-	
-	public getIsSelected(){return this.isSelected;}
-	public setIsSelected(newVal: boolean){this.isSelected = newVal;}
 	
 	public drawBackground()
 	{
-		//console.log("Drawing " + this.vertex.xPos*this.zoom + ", " + this.vertex.yPos*this.zoom + ", " + this.circleSize);
+		//console.log("Drawing " + this.MapVertex.xPos*this.zoom + ", " + this.MapVertex.yPos*this.zoom + ", " + this.circleSize);
 		this.ctx.beginPath();
-		this.ctx.arc(this.vertex.xPos*this.zoom, this.vertex.yPos*this.zoom, this.circleSize+2, 0, Math.PI * 2, true);
+		this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize+2, 0, Math.PI * 2, true);
 		this.ctx.fillStyle = this.backColor;
 		this.ctx.fill();
 		this.ctx.closePath();
@@ -573,63 +502,85 @@ class CanvasVertex{
 		this.ctx.fillStyle = this.textColor;
 		this.ctx.font = textSize + "px Arial";
 		
-		this.ctx.fillText(String(this.vertex.id),(this.vertex.xPos*this.zoom)-(this.ctx.measureText(String(this.vertex.id)).width/2),(this.vertex.yPos*this.zoom)+textHeightOffset);
+		this.ctx.fillText(String(this.mapVertex.id),(this.mapVertex.xPos*this.zoom)-(this.ctx.measureText(String(this.mapVertex.id)).width/2),(this.mapVertex.yPos*this.zoom)+textHeightOffset);
 	}
 	
-	public drawNormal()
+	public draw()
 	{
-		this.drawBackground();
-		
-		this.ctx.beginPath();
-		this.ctx.arc(this.vertex.xPos*this.zoom, this.vertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
-		this.ctx.fillStyle = this.color;
-		this.ctx.fill();
-		this.ctx.closePath();
-		
-		this.drawID();
+		if(!this.isHidden)
+		{
+			//this.drawBackground();
+			this.ctx.save();
+			this.ctx.beginPath();
+			var time = new Date();
+			
+			if(this.isSelected){
+				
+				//this.ctx.rotate(((time.getMilliseconds()*.36) * Math.PI)/180);
+				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
+				
+				if(this.isStartPoint) {this.ctx.fillStyle = this.selectStartColor;}
+				else {{this.ctx.fillStyle = this.selectEndColor;}}
+			}
+			else if(this.isHovered){
+				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
+				this.ctx.fillStyle = this.hoverColor;
+			}
+			else{
+				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize/3, 0, Math.PI * 2, true);
+				this.ctx.fillStyle = this.color;
+			}
+			
+			this.ctx.fill();
+			this.ctx.closePath();
+			this.ctx.restore();
+			
+			//this.drawID();
+		}
 	}
 	
-	public drawSelectedStart()
+	//call this to update this MapVertex's selected boolean to true, as well as the start point
+	public selectMapVertex(isStart: boolean)
 	{
-		this.ctx.beginPath();
-		this.ctx.arc(this.vertex.xPos*this.zoom, this.vertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
-		this.ctx.fillStyle = this.selectStartColor;
-		this.ctx.fill();
-		this.ctx.closePath();
-		
-		this.drawID();
+		this.isStartPoint = isStart;
+		this.isSelected = true;
 	}
 	
-	public drawSelectedEnd()
-	{
-		this.ctx.beginPath();
-		this.ctx.arc(this.vertex.xPos*this.zoom, this.vertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
-		this.ctx.fillStyle = this.selectEndColor;
-		this.ctx.fill();
-		this.ctx.closePath();
-		
-		this.drawID();
-	}
+	//call this to update this MapVertex's selected boolean to false
+	public deselectMapVertex(){this.isSelected = false;}
 	
-	public drawHovered()
-	{
-		this.ctx.beginPath();
-		this.ctx.arc(this.vertex.xPos*this.zoom, this.vertex.yPos*this.zoom, this.circleSize-1, 0, Math.PI * 2, true);
-		this.ctx.fillStyle = this.hoverColor;
-		this.ctx.fill();
-		this.ctx.closePath();
-		
-		this.drawID();
-	}
+	//call this to update this MapVertex's hover boolean to true
+	public hoverMapVertex(){this.isHovered = true;}
+	
+	//call this to update this MapVertex's hover boolean to false
+	public unhoverMapVertex(){this.isHovered = false;}
+	
+	//call this to update this MapVertex's hidden boolean to true
+	public hideMapVertex(){this.isHidden = true;}
+	
+	//call this to update this MapVertex's hidden boolean to false
+	public showMapVertex(){this.isHidden = false;}
+	
+	public getIsSelected() {return this.isSelected;}
+	public getIsHovered() {return this.isHovered;}
+	public getIsHidden() {return this.isHidden;}
 };
 
 
-/*Visual representation of edges--- ALSO acts as a wrapper to connect any 2 vertices! Used in dijkstra's algorithm implementation*/
-class CanvasEdge{
+
+
+
+
+
+
+
+
+/*Visual representation of mapEdges--- ALSO acts as a wrapper to connect any 2 vertices! Used in dijkstra's algorithm implementation*/
+class CanvasMapEdge{
 	
 	ctx: CanvasRenderingContext2D;
-	node1: CanvasVertex;
-	node2: CanvasVertex;
+	node1: CanvasMapVertex;
+	node2: CanvasMapVertex;
 	zoom: number;
 	color: string;
 	selectColor: string;
@@ -638,7 +589,7 @@ class CanvasEdge{
 	
 	isSelected: boolean;
 	
-	constructor(_ctx: CanvasRenderingContext2D, _node1: CanvasVertex, _node2: CanvasVertex)
+	constructor(_ctx: CanvasRenderingContext2D, _node1: CanvasMapVertex, _node2: CanvasMapVertex)
 	{
 		this.ctx = _ctx;
 		this.node1 = _node1;
@@ -653,42 +604,48 @@ class CanvasEdge{
 		this.isSelected = false;
 	}
 	
-	/*Return a reference to the other vertex, given a vertex*/
-	public getOtherVertex(_testNode: Vertex)
+	//return true if both the specified nodes exist in this edge, false otherwise
+	public hasTheseVertices(newNode1: number, newNode2: number)
 	{
-		if(_testNode.id == this.node1.vertex.id){return this.node2;}
-		else if(_testNode.id == this.node2.vertex.id){return this.node1;}
+		return ((this.node1.mapVertex.id == newNode1 && this.node2.mapVertex.id == newNode2) || (this.node2.mapVertex.id == newNode1 && this.node1.mapVertex.id == newNode2));
+	}
+	
+	/*Return a reference to the other MapVertex, given a MapVertex*/
+	public getOtherVertex(_testNode: MapVertex)
+	{
+		if(_testNode.id == this.node1.mapVertex.id){return this.node2;}
+		else if(_testNode.id == this.node2.mapVertex.id){return this.node1;}
 		else{return null;}
 	}
 	
-	/*Return the other vertex's id, given a vertex id*/
+	/*Return the other MapVertex's id, given a MapVertex id*/
 	public getOtherVertexID(_testNodeID: number)
 	{
-		if(_testNodeID == this.node1.vertex.id){return this.node2.vertex.id;}
-		else if(_testNodeID == this.node2.vertex.id){return this.node1.vertex.id;}
+		if(_testNodeID == this.node1.mapVertex.id){return this.node2.mapVertex.id;}
+		else if(_testNodeID == this.node2.mapVertex.id){return this.node1.mapVertex.id;}
 		else{return null;}
 	}
 	
-	/*Return the other vertex, given a vertex id*/
+	/*Return the other MapVertex, given a MapVertex id*/
 	public getOtherVertexFromID(_testNodeID: number)
 	{
-		if(_testNodeID == this.node1.vertex.id){return this.node2;}
-		else if(_testNodeID == this.node2.vertex.id){return this.node1;}
+		if(_testNodeID == this.node1.mapVertex.id){return this.node2;}
+		else if(_testNodeID == this.node2.mapVertex.id){return this.node1;}
 		else{return null;}
 	}
 	
-	/*Return the requested vertex given a vertex id*/
+	/*Return the requested MapVertex given a MapVertex id*/
 	public getVertexFromID(_testNodeID: number)
 	{
-		if(_testNodeID == this.node1.vertex.id){return this.node1;}
-		else if(_testNodeID == this.node2.vertex.id){return this.node2;}
+		if(_testNodeID == this.node1.mapVertex.id){return this.node1;}
+		else if(_testNodeID == this.node2.mapVertex.id){return this.node2;}
 		else{return null;}
 	}
 	
 	/*find the distance between the nodes*/
 	public getDistance()
 	{
-		return Math.sqrt((this.node2.vertex.xPos - this.node1.vertex.xPos)**2 + (this.node2.vertex.yPos - this.node1.vertex.yPos)**2);
+		return Math.sqrt((this.node2.mapVertex.xPos - this.node1.mapVertex.xPos)**2 + (this.node2.mapVertex.yPos - this.node1.mapVertex.yPos)**2);
 	}
 	
 	public drawDistance()
@@ -699,13 +656,13 @@ class CanvasEdge{
 		
 		this.ctx.font = "12px Arial";
 		
-		var distance = String(this.getDistance()).substring(0, 6)//distance to show under edge; truncated to 6 chars
+		var distance = String(this.getDistance()).substring(0, 6)//distance to show under MapEdge; truncated to 6 chars
 			
 		var backWidth = this.ctx.measureText(distance).width;
 		
 		//console.log("X positions: " + this.node1.xPos + ", " + this.node2.xPos + ".");
-		var midX = ((this.node1.vertex.xPos + this.node2.vertex.xPos)/2)*this.zoom;
-		var midY = ((this.node1.vertex.yPos + this.node2.vertex.yPos)/2)*this.zoom;
+		var midX = ((this.node1.mapVertex.xPos + this.node2.mapVertex.xPos)/2)*this.zoom;
+		var midY = ((this.node1.mapVertex.yPos + this.node2.mapVertex.yPos)/2)*this.zoom;
 		
 		//console.log("Midpoint: " + midX + ", " + midY);
 		
@@ -716,23 +673,10 @@ class CanvasEdge{
 		this.ctx.fillText(distance,midX-(backWidth/2),midY+5);
 	}
 	
-	//call this to update this edge's selected boolean to true and automatically redraw
-	public selectEdge()
-	{
-		this.isSelected = true;
-		this.draw();
-	}
-	
-	//call this to update this edge's selected boolean to true and automatically redraw
-	public deselectEdge()
-	{
-		this.isSelected = false;
-		this.draw();
-	}
-	
 	public draw()
 	{
 		this.ctx.beginPath();
+		this.ctx.lineCap="round";
 		if(this.isSelected)
 		{
 			this.ctx.lineWidth=5;
@@ -740,14 +684,28 @@ class CanvasEdge{
 		}
 		else
 		{
-			this.ctx.lineWidth=8;
+			this.ctx.lineWidth=1;
 			this.ctx.strokeStyle = this.color;
 		}
-		this.ctx.moveTo(this.node1.vertex.xPos*this.zoom,this.node1.vertex.yPos*this.zoom);
-		this.ctx.lineTo(this.node2.vertex.xPos*this.zoom,this.node2.vertex.yPos*this.zoom);
+		this.ctx.moveTo(this.node1.mapVertex.xPos*this.zoom,this.node1.mapVertex.yPos*this.zoom);
+		this.ctx.lineTo(this.node2.mapVertex.xPos*this.zoom,this.node2.mapVertex.yPos*this.zoom);
 		this.ctx.stroke();
 		this.ctx.closePath();
 		
-		this.drawDistance();
+		//this.drawDistance();
+	}
+	
+	//call this to update this MapEdge's selected boolean to true
+	public selectMapEdge()
+	{
+		this.isSelected = true;
+		//this.draw();
+	}
+	
+	//call this to update this MapEdge's selected boolean to true
+	public deselectMapEdge()
+	{
+		this.isSelected = false;
+		//this.draw();
 	}
 };
