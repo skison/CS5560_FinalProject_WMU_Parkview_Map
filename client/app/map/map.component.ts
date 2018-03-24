@@ -52,6 +52,12 @@ export class MapComponent implements OnInit, AfterViewInit {
 	isLoading = true;
 	isEditing = false;
 	
+	continueAnimatingExpand: boolean;//only animate expands while this is true!
+	continueAnimatingContract: boolean;//only animate contracts while this is true!
+	continueAnimatingHide: boolean;//only animate hides while this is true!
+	totalExpands: 0; //counter to prevent redundant expand animations at once
+	totalContracts: 0; //counter to prevent redundant expand animations at once
+	
 	isGettingPath = false; //set to true when waiting for path from server
 	
 	mapElementsObtained = 0; //increment either when vertices and/or edges have been obtained. Once this ==2, the map can be created
@@ -90,7 +96,8 @@ export class MapComponent implements OnInit, AfterViewInit {
 		this.cxVertices = this.canvasElVertices.getContext('2d');
 		this.cxEdges = this.canvasElEdges.getContext('2d');
 		
-		//this.cx.translate(0.5, 0.5); //allow for smoother lines (less unnecessary anti-aliasing)
+		//this.cxVertices.translate(0.5, 0.5); //allow for smoother lines (less unnecessary anti-aliasing)
+		//this.cxEdges.translate(0.5, 0.5); //allow for smoother lines (less unnecessary anti-aliasing)
 		
 		this.captureEvents(this.canvasElVertices);
 		//this.captureEvents()
@@ -101,6 +108,9 @@ export class MapComponent implements OnInit, AfterViewInit {
 		if(this.mapReadyCounter == 2){
 			this.drawMap(); //redundant attempt to draw map;
 		}
+		
+		//start animation frames
+		this.animate();
 		
 	}
 	
@@ -196,11 +206,36 @@ export class MapComponent implements OnInit, AfterViewInit {
 			canvasMapVertex.draw();
 		}); 
 	}
-	/*Animate a selected node*/
-	animateNodeExpand()
+	/*perform any animations for this frame*/
+	animate()
 	{
-		this.drawVerticesLayer();
-		window.requestAnimationFrame(this.animateNodeExpand.bind(this));
+		//Check for animations on the vertices layer
+		if(this.continueAnimatingExpand || this.continueAnimatingContract || this.continueAnimatingHide)
+		{
+			//console.log("animating");
+			
+			this.continueAnimatingExpand = false; this.continueAnimatingContract = false; this.continueAnimatingHide = false;//reset booleans to false
+			
+			this.canvasVertices.forEach(function (canvasMapVertex) {
+				if(canvasMapVertex.getIsHidden()) //only hide nodes that should be hidden
+				{
+					if(!canvasMapVertex.isFullyHidden()){ this.continueAnimatingHide = true; }//still needs to contract more
+				}
+				else if(!canvasMapVertex.getIsSelected() && !canvasMapVertex.getIsHovered()) //only contract non-selected and non-hovered nodes
+				{
+					if(!canvasMapVertex.isFullyContracted()){ this.continueAnimatingContract = true; }//still needs to contract more
+				}
+				else if(canvasMapVertex.getIsSelected() || canvasMapVertex.getIsHovered()) //only expand non-selected and non-hovered nodes
+				{
+					if(!canvasMapVertex.isFullyExpanded()){  this.continueAnimatingExpand = true; }//still needs to expand more
+				}
+			}.bind(this));
+			
+			this.drawVerticesLayer();
+		}
+		
+		//restart animation
+		window.requestAnimationFrame(this.animate.bind(this));
 	}
 	
 	
@@ -259,8 +294,10 @@ export class MapComponent implements OnInit, AfterViewInit {
 						parent.startPoint = canvasMapVertex.mapVertex.id;//set this as start point
 						
 						canvasMapVertex.selectMapVertex(true);
-						parent.drawVerticesLayer();
+						//parent.drawVerticesLayer();
 						//parent.animateNodeExpand();
+						parent.continueAnimatingExpand = true;
+						parent.continueAnimatingHide = true;
 						parent.toast.setMessage('Point ' + parent.startPoint + ' selected as starting point!', 'success');
 						
 						if(parent.endPoint > 0) //only activate if both points are set
@@ -277,8 +314,10 @@ export class MapComponent implements OnInit, AfterViewInit {
 						parent.endPoint = canvasMapVertex.mapVertex.id;//set this as end point
 						
 						canvasMapVertex.selectMapVertex(false);
-						parent.drawVerticesLayer();
+						//parent.drawVerticesLayer();
 						//parent.animateNodeExpand();
+						parent.continueAnimatingContract = true;
+						parent.continueAnimatingHide = true;
 						parent.toast.setMessage('Point ' + parent.endPoint + ' selected as ending point!', 'success');
 						
 						if(parent.startPoint > 0) //only activate if both points are set
@@ -297,7 +336,10 @@ export class MapComponent implements OnInit, AfterViewInit {
 					if(parent.endPoint == canvasMapVertex.mapVertex.id)
 					{
 						canvasMapVertex.deselectMapVertex();
-						parent.drawVerticesLayer();
+						//parent.animateNodeContract();
+						parent.continueAnimatingContract = true;
+						parent.continueAnimatingHide = true;
+						//parent.drawVerticesLayer();
 						parent.endPoint = -1;
 						parent.toast.setMessage('Point ' + canvasMapVertex.mapVertex.id + ' deselected as ending point!', 'danger');
 						
@@ -307,7 +349,10 @@ export class MapComponent implements OnInit, AfterViewInit {
 					else if(parent.startPoint == canvasMapVertex.mapVertex.id)
 					{
 						canvasMapVertex.deselectMapVertex();
-						parent.drawVerticesLayer();
+						//parent.animateNodeContract();
+						parent.continueAnimatingContract = true;
+						parent.continueAnimatingHide = true;
+						//parent.drawVerticesLayer();
 						parent.startPoint = -1;
 						parent.toast.setMessage('Point ' + canvasMapVertex.mapVertex.id + ' deselected as starting point!', 'danger');
 						
@@ -332,13 +377,19 @@ export class MapComponent implements OnInit, AfterViewInit {
 					if(!canvasMapVertex.getIsHovered())
 					{
 						canvasMapVertex.hoverMapVertex();
-						parent.drawVerticesLayer();
+						//parent.animateNodeExpand();
+						//parent.drawVerticesLayer();
+						parent.continueAnimatingExpand = true;
+						parent.continueAnimatingHide = true;
 					}
 				}
 				else if(canvasMapVertex.getIsHovered())
 				{
 					canvasMapVertex.unhoverMapVertex();
-					parent.drawVerticesLayer();
+					//parent.animateNodeContract();
+					//parent.drawVerticesLayer();
+					parent.continueAnimatingContract = true;
+					parent.continueAnimatingHide = true;
 				}
 			}
 		});
@@ -451,7 +502,10 @@ class CanvasMapVertex{
 	selectEndColor: string;
 	hoverColor: string;
 	backColor: string;
-	circleSize: number;
+	circleSize: number; //current size of circle
+	minCircleSize: number; //smallest size circle can be
+	maxCircleSize: number; //largest size circle can be
+	resizeRate: number; //speed at which this circle can be resized each frame. TODO: make this run on time, NOT framerate!
 	textColor: string;
 	
 	isSelected: boolean;
@@ -471,7 +525,10 @@ class CanvasMapVertex{
 		this.selectEndColor = '#ff940a'//'#ff1414'; //color when selected as ending point
 		this.backColor = '#000000'; //background color (outline)
 		this.textColor = '#ffffff'; //color of the text
-		this.circleSize = 15; //size of the circle in px
+		this.minCircleSize = 7.5;
+		this.circleSize = this.minCircleSize;
+		this.maxCircleSize = 15; //size of the circle in px
+		this.resizeRate = 1;//not too fast
 		
 		this.isSelected = false;
 		this.isHovered = false;
@@ -481,7 +538,7 @@ class CanvasMapVertex{
 	
 	/*Return true if point exists within this circle, or false otherwise*/
 	public isPointOver(newX: number, newY: number){ 
-		return (((newX - this.mapVertex.xPos*this.zoom)**2) + ((newY - this.mapVertex.yPos*this.zoom)**2) <= (this.circleSize**2)); 
+		return (((newX - this.mapVertex.xPos*this.zoom)**2) + ((newY - this.mapVertex.yPos*this.zoom)**2) <= (this.maxCircleSize**2)); 
 	}
 	
 	public drawBackground()
@@ -507,36 +564,76 @@ class CanvasMapVertex{
 	
 	public draw()
 	{
-		if(!this.isHidden)
-		{
+		/*if(!this.isHidden)
+		{*/
 			//this.drawBackground();
 			this.ctx.save();
 			this.ctx.beginPath();
-			var time = new Date();
 			
-			if(this.isSelected){
+			//var time = new Date();
+			
+			if(this.isHidden){ //node is hidden
+				if(this.circleSize > 0){ //circle needs to shrink to 0
+					this.circleSize -= this.resizeRate; //shrink
+					if(this.circleSize < 0){ //if it's now too small
+						this.circleSize = 0; //cap its size
+					}
+				}
 				
-				//this.ctx.rotate(((time.getMilliseconds()*.36) * Math.PI)/180);
-				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
+				this.ctx.fillStyle = this.color;
+			}
+			else if(this.isSelected){ //node is selected
+				
+				if(this.circleSize < this.maxCircleSize){ //circle needs to grow
+					this.circleSize += this.resizeRate; //grow
+					if(this.circleSize > this.maxCircleSize){ //if it's now too large
+						this.circleSize = this.maxCircleSize; //cap its size
+					}
+				}
 				
 				if(this.isStartPoint) {this.ctx.fillStyle = this.selectStartColor;}
 				else {{this.ctx.fillStyle = this.selectEndColor;}}
 			}
-			else if(this.isHovered){
-				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
+			else if(this.isHovered){ //node is hovered
+				
+				if(this.circleSize < this.maxCircleSize){ //circle needs to grow
+					this.circleSize += this.resizeRate; //grow
+					if(this.circleSize > this.maxCircleSize){ //if it's now too large
+						this.circleSize = this.maxCircleSize; //cap its size
+					}
+				}
+				
 				this.ctx.fillStyle = this.hoverColor;
 			}
-			else{
-				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize/3, 0, Math.PI * 2, true);
+			else{ //node is normal
+				if(this.circleSize > this.minCircleSize){ //circle needs to shrink
+					this.circleSize -= this.resizeRate; //shrink
+					if(this.circleSize < this.minCircleSize){ //if it's now too small
+						this.circleSize = this.minCircleSize; //cap its size
+					}
+				}
+				
+				if(this.circleSize < this.minCircleSize){ //circle needs to grow
+					this.circleSize += this.resizeRate; //grow
+					if(this.circleSize > this.minCircleSize){ //if it's now too large
+						this.circleSize = this.minCircleSize; //cap its size
+					}
+				}
+				
 				this.ctx.fillStyle = this.color;
 			}
 			
-			this.ctx.fill();
-			this.ctx.closePath();
+			if(this.circleSize > 0)
+			{
+				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
+				this.ctx.fill();
+				this.ctx.closePath();
+			}
+			
 			this.ctx.restore();
 			
-			//this.drawID();
-		}
+			this.drawID();
+		/*}*/
 	}
 	
 	//call this to update this MapVertex's selected boolean to true, as well as the start point
@@ -545,6 +642,10 @@ class CanvasMapVertex{
 		this.isStartPoint = isStart;
 		this.isSelected = true;
 	}
+	
+	public isFullyExpanded(){/*console.log("Circle size: " + this.circleSize + ", maxCircleSize: " + this.maxCircleSize + ", done? " + (this.circleSize >= this.maxCircleSize));*/ return (this.circleSize == this.maxCircleSize);}
+	public isFullyContracted(){return (this.circleSize == this.minCircleSize);}
+	public isFullyHidden(){return (this.circleSize == 0);}
 	
 	//call this to update this MapVertex's selected boolean to false
 	public deselectMapVertex(){this.isSelected = false;}
