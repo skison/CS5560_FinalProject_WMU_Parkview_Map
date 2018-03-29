@@ -27,6 +27,16 @@ import DijkstraMapVertex from '../../../shared/models/dijkstramapvertex';
 })
 export class MapComponent implements OnInit, AfterViewInit {
 	
+	/*map zoom controls*/
+	selectZoomForm: FormGroup;
+	selectzoom = new FormControl('', [
+		Validators.required
+	]);
+	
+	/*map transformations holder (zoom, rotation, x&y offsets, etc.)*/
+	mapTransforms: MapTransforms;
+	
+	/*the actual rendered canvases*/
 	@ViewChild('canvasVertices') public canvasVerticesLayer: ElementRef;
 	@ViewChild('canvasEdges') public canvasEdgesLayer: ElementRef;
 	
@@ -74,23 +84,44 @@ export class MapComponent implements OnInit, AfterViewInit {
 				
 	/*Triggers when component loads*/
 	ngOnInit() {
+		var parent = this; //store reference to variables from this object
+		
+		/*set the default transformations: zoom: 90%, rotation: 0, xOffset: 0, yOffset: 0*/
+		this.mapTransforms = new MapTransforms(10, 0, 0, 0);
+		
 		console.log("getting map data");
 		this.getMapEdges();
 		this.getMapVertices();
 		this.isLoading = false;
+		
+		this.selectZoomForm = this.formBuilder.group({
+			selectzoom: this.selectzoom
+		});
+		
+		/*update mapTransforms zoom on selectzoom change*/
+		this.selectZoomForm.valueChanges.subscribe(data => {
+		  //console.log('Form changes', data.selectzoom)
+			if(data.selectzoom != null)
+			{
+				parent.mapTransforms.setZoom(data.selectzoom);
+			}
+		})
 	}
+	
 	/*Triggers once view has finished loading*/
 	ngAfterViewInit() {
+		this.selectzoom.setValue(this.mapTransforms.getZoom());//set a default zoom level
+		//console.log(this.selectzoom.value);
 		//console.log("starting ngAfterViewInit");
 		this.canvasElVertices = this.canvasVerticesLayer.nativeElement;
 		this.canvasElEdges = this.canvasEdgesLayer.nativeElement;
 		//console.log(this.canvas.nativeElement);
 		
 		/*default canvas size; could be made responsive by dynamically changing these on screen size*/
-		this.canvasElVertices.width = 800;
+		this.canvasElVertices.width = 600;
 		this.canvasElVertices.height = 450;
 		
-		this.canvasElEdges.width = 800;
+		this.canvasElEdges.width = 600;
 		this.canvasElEdges.height = 450;
 		
 		this.cxVertices = this.canvasElVertices.getContext('2d');
@@ -141,7 +172,7 @@ export class MapComponent implements OnInit, AfterViewInit {
 		
 		//create canvasVertices
 		this.vertices.forEach(function (mapVertex) {
-			parent.canvasVertices[mapVertex.id] = (new CanvasMapVertex(parent.cxVertices, mapVertex));
+			parent.canvasVertices[mapVertex.id] = (new CanvasMapVertex(parent.cxVertices, parent.mapTransforms, mapVertex));
 		}); 
 		
 		
@@ -149,7 +180,7 @@ export class MapComponent implements OnInit, AfterViewInit {
 		this.mapEdges.forEach(function (mapEdge) {
 			var firstNode = parent.canvasVertices[mapEdge.node1];
 			var secondNode = parent.canvasVertices[mapEdge.node2];
-			var thisCanvasMapEdge = new CanvasMapEdge(parent.cxEdges, firstNode, secondNode);
+			var thisCanvasMapEdge = new CanvasMapEdge(parent.cxEdges, parent.mapTransforms, firstNode, secondNode);
 			
 			parent.canvasEdgesUnlinked.push(thisCanvasMapEdge);//push MapEdge to unlinked array
 			
@@ -209,8 +240,16 @@ export class MapComponent implements OnInit, AfterViewInit {
 	/*perform any animations for this frame*/
 	animate()
 	{
+		var divWidth = document.getElementById("canvasHolder").clientWidth;
+		//console.log(divWidth);
+		/*dynamically scale canvas*/
+		this.cxVertices.canvas.width  = divWidth;
+		this.cxVertices.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
+		this.cxEdges.canvas.width  = divWidth;
+		this.cxEdges.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
+  
 		//Check for animations on the vertices layer
-		if(this.continueAnimatingExpand || this.continueAnimatingContract || this.continueAnimatingHide)
+		/*if(this.continueAnimatingExpand || this.continueAnimatingContract || this.continueAnimatingHide)
 		{
 			//console.log("animating");
 			
@@ -232,7 +271,10 @@ export class MapComponent implements OnInit, AfterViewInit {
 			}.bind(this));
 			
 			this.drawVerticesLayer();
-		}
+		}*/
+		
+		this.drawVerticesLayer();
+		this.drawEdgesLayer();
 		
 		//restart animation
 		window.requestAnimationFrame(this.animate.bind(this));
@@ -276,6 +318,34 @@ export class MapComponent implements OnInit, AfterViewInit {
 			
 			//Look through vertices; check if any are hovered over, and if so, render an acknowledgment
 			this.checkForHover(newPos.x, newPos.y);
+		});
+		
+		//For dragging map
+		Observable
+		.fromEvent(canvasEl, 'mousedown')
+		.switchMap((e) => {
+			return Observable
+			.fromEvent(canvasEl, 'mousemove')
+			.takeUntil(Observable.fromEvent(canvasEl, 'mouseup'))
+			.takeUntil(Observable.fromEvent(canvasEl, 'mouseleave'))
+			.pairwise()
+		})
+		.subscribe((res: [MouseEvent, MouseEvent]) => {
+			const rect = canvasEl.getBoundingClientRect();
+  
+			const prevPos = {
+				x: res[0].clientX - rect.left,
+				y: res[0].clientY - rect.top
+			};
+  
+			const currentPos = {
+				x: res[1].clientX - rect.left,
+				y: res[1].clientY - rect.top
+			};
+  
+			//this.drawOnCanvas(prevPos, currentPos);
+			//drag map to new location
+			this.dragMap(prevPos, currentPos);
 		});
 	}
 	/*Check map points for click*/
@@ -394,6 +464,16 @@ export class MapComponent implements OnInit, AfterViewInit {
 			}
 		});
 	}
+	/*drag the map to the new position*/
+	dragMap(prevPos: { x: number, y: number }, currentPos: { x: number, y: number })
+	{
+		var difX = (currentPos.x-prevPos.x);//relative movement in the X direction
+		var difY = (currentPos.y-prevPos.y);//relative movement in the Y direction
+		//console.log("dragging map from " + prevPos.x + ", " + prevPos.y + " to " + currentPos.x + ", " + currentPos.y);
+		//console.log("difference: " + difX + ", " + difY);
+		this.mapTransforms.addXOffset(difX);
+		this.mapTransforms.addYOffset(difY);
+	}
 	
 	
 	//hide all vertices that are not selected
@@ -496,7 +576,8 @@ class CanvasMapVertex{
 	
 	ctx: CanvasRenderingContext2D;
 	mapVertex: MapVertex;
-	zoom: number;
+	mapTransforms: MapTransforms;
+	//zoom: number;
 	color: string;
 	selectStartColor: string;
 	selectEndColor: string;
@@ -513,12 +594,13 @@ class CanvasMapVertex{
 	isStartPoint: boolean; //true if start point, false if end point (only relevent if isSelected)
 	isHidden: boolean; //true to hide this point (don't draw it)
 	
-	constructor(_ctx: CanvasRenderingContext2D, _mapVertex: MapVertex)
+	constructor(_ctx: CanvasRenderingContext2D, _mapTransforms: MapTransforms, _mapVertex: MapVertex)
 	{
 		this.ctx = _ctx;
 		this.mapVertex = _mapVertex;
+		this.mapTransforms = _mapTransforms;
 		
-		this.zoom = 10; //multiplier for zooming in
+		//this.zoom = 10; //multiplier for zooming in
 		this.color = '#1158ff'; //default color
 		this.hoverColor = '#1158ff'//'#1a27ba'; //color when hovering over
 		this.selectStartColor = '#29f24d'; //color when selected as starting point
@@ -538,14 +620,15 @@ class CanvasMapVertex{
 	
 	/*Return true if point exists within this circle, or false otherwise*/
 	public isPointOver(newX: number, newY: number){ 
-		return (((newX - this.mapVertex.xPos*this.zoom)**2) + ((newY - this.mapVertex.yPos*this.zoom)**2) <= (this.maxCircleSize**2)); 
+		return (((newX - ((this.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset()))**2)
+			+ ((newY - ((this.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset()))**2) <= (this.maxCircleSize**2)); 
 	}
 	
 	public drawBackground()
 	{
-		//console.log("Drawing " + this.MapVertex.xPos*this.zoom + ", " + this.MapVertex.yPos*this.zoom + ", " + this.circleSize);
+		//console.log("Drawing " + this.MapVertex.xPos*this.mapTransforms.getZoom() + ", " + this.MapVertex.yPos*this.mapTransforms.getZoom()+ ", " + this.circleSize);
 		this.ctx.beginPath();
-		this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize+2, 0, Math.PI * 2, true);
+		this.ctx.arc(this.mapVertex.xPos*this.mapTransforms.getZoom(), this.mapVertex.yPos*this.mapTransforms.getZoom(), this.circleSize+2, 0, Math.PI * 2, true);
 		this.ctx.fillStyle = this.backColor;
 		this.ctx.fill();
 		this.ctx.closePath();
@@ -559,7 +642,9 @@ class CanvasMapVertex{
 		this.ctx.fillStyle = this.textColor;
 		this.ctx.font = textSize + "px Arial";
 		
-		this.ctx.fillText(String(this.mapVertex.id),(this.mapVertex.xPos*this.zoom)-(this.ctx.measureText(String(this.mapVertex.id)).width/2),(this.mapVertex.yPos*this.zoom)+textHeightOffset);
+		this.ctx.fillText(String(this.mapVertex.id),
+			((this.mapVertex.xPos*this.mapTransforms.getZoom())-(this.ctx.measureText(String(this.mapVertex.id)).width/2))+this.mapTransforms.getXOffset(),
+			((this.mapVertex.yPos*this.mapTransforms.getZoom())+textHeightOffset)+this.mapTransforms.getYOffset();
 	}
 	
 	public draw()
@@ -625,7 +710,7 @@ class CanvasMapVertex{
 			
 			if(this.circleSize > 0)
 			{
-				this.ctx.arc(this.mapVertex.xPos*this.zoom, this.mapVertex.yPos*this.zoom, this.circleSize, 0, Math.PI * 2, true);
+				this.ctx.arc((this.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(), (this.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset(), this.circleSize, 0, Math.PI * 2, true);
 				this.ctx.fill();
 				this.ctx.closePath();
 			}
@@ -682,7 +767,8 @@ class CanvasMapEdge{
 	ctx: CanvasRenderingContext2D;
 	node1: CanvasMapVertex;
 	node2: CanvasMapVertex;
-	zoom: number;
+	mapTransforms: MapTransforms;
+	//zoom: number;
 	color: string;
 	selectColor: string;
 	textColor: string;
@@ -690,13 +776,14 @@ class CanvasMapEdge{
 	
 	isSelected: boolean;
 	
-	constructor(_ctx: CanvasRenderingContext2D, _node1: CanvasMapVertex, _node2: CanvasMapVertex)
+	constructor(_ctx: CanvasRenderingContext2D, _mapTransforms: MapTransforms, _node1: CanvasMapVertex, _node2: CanvasMapVertex)
 	{
 		this.ctx = _ctx;
 		this.node1 = _node1;
 		this.node2 = _node2;
+		this.mapTransforms = _mapTransforms;
 		
-		this.zoom = 10; //multiplier for zooming in
+		//this.zoom = 10; //multiplier for zooming in
 		this.color = '#000000'; //default color
 		this.selectColor = '#ff1414'; //color when selected
 		this.textColor = '#ffffff';//'#f50'; //color of the text
@@ -762,8 +849,8 @@ class CanvasMapEdge{
 		var backWidth = this.ctx.measureText(distance).width;
 		
 		//console.log("X positions: " + this.node1.xPos + ", " + this.node2.xPos + ".");
-		var midX = ((this.node1.mapVertex.xPos + this.node2.mapVertex.xPos)/2)*this.zoom;
-		var midY = ((this.node1.mapVertex.yPos + this.node2.mapVertex.yPos)/2)*this.zoom;
+		var midX = (((this.node1.mapVertex.xPos + this.node2.mapVertex.xPos)/2)*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset();
+		var midY = (((this.node1.mapVertex.yPos + this.node2.mapVertex.yPos)/2)*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset();
 		
 		//console.log("Midpoint: " + midX + ", " + midY);
 		
@@ -788,8 +875,8 @@ class CanvasMapEdge{
 			this.ctx.lineWidth=1;
 			this.ctx.strokeStyle = this.color;
 		}
-		this.ctx.moveTo(this.node1.mapVertex.xPos*this.zoom,this.node1.mapVertex.yPos*this.zoom);
-		this.ctx.lineTo(this.node2.mapVertex.xPos*this.zoom,this.node2.mapVertex.yPos*this.zoom);
+		this.ctx.moveTo((this.node1.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(),(this.node1.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset();
+		this.ctx.lineTo((this.node2.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(),(this.node2.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset();
 		this.ctx.stroke();
 		this.ctx.closePath();
 		
@@ -810,3 +897,41 @@ class CanvasMapEdge{
 		//this.draw();
 	}
 };
+
+
+
+
+
+
+
+
+
+
+/*A simple class for holding transformation data, specifically: zoom level, rotation, and x&y offset*/
+class MapTransforms{
+	private zoom: number;
+	private rotation: number;
+	private xOffset: number;
+	private yOffset: number;
+	
+	constructor(_zoom: number, _rotation: number, _xOffset: number, _yOffset: number)
+	{
+		this.zoom = _zoom;
+		this.rotation = _rotation;
+		this.xOffset = _xOffset;
+		this.yOffset = _yOffset;
+	}
+	
+	public getZoom(){return this.zoom;}
+	public getRotation(){return this.rotation;}
+	public getXOffset(){return this.xOffset;}
+	public getYOffset(){return this.yOffset;}
+	
+	public setZoom(_zoom: number){/*console.log("Setting zoom: " + _zoom);*/ this.zoom = _zoom;}
+	public setRotation(_rotation: number){this.rotation = _rotation;}
+	public setXOffset(_xOffset: number){this.xOffset = _xOffset;}
+	public setYOffset(_yOffset: number){this.yOffset = _yOffset;}
+	
+	public addXOffset(xDif: number){this.xOffset += xDif;}
+	public addYOffset(yDif: number){this.yOffset += yDif;}
+}

@@ -7,9 +7,15 @@
   <div class="card-body">
   
 	<div id="canvasHolder" #canvasHolder>
-		<p id="loadPath" [ngClass]="{'showLoading' : isGettingPath}">Loading...</p>
+		<div id="loadPath" [ngClass]="{'showLoading' : isGettingPath}">Loading...</div>
 		<canvas id="canvasEdges" #canvasEdges style="border: 1px gray solid"></canvas>
 		<canvas id="canvasVertices" #canvasVertices style="border: 1px gray solid"></canvas>
+		<div class="slider-wrapper" [formGroup]="selectZoomForm">
+			<input type="range" orient="vertical" min=".1" max="100"  (ngInit)="zoommodel=50" step=".1" name="selectzoom" [(ngModel)]="zoommodel" formControlName="selectzoom">
+		</div>
+		<div id="mapInfo">
+			<p id="zoomInfo">Zoom: {{zoommodel}}%</p>
+		</div>
 	</div>
 	
 	<div class="card" *ngIf="!isEditing">
