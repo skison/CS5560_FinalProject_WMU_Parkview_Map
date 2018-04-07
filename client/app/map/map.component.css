@@ -38,18 +38,22 @@
 	font-size: 15px;
 	font-weight: bold;
 	padding-right: 30px;
-	z-index: 5;
+	padding-bottom: 30px;
+	z-index: 1;
 	/*width: 100%;
 	height: 100%;*/
 	text-align: center;
 	bottom: 0;
 	right: 0;
 }
+#mapInfo p{
+	margin: 0;
+}
 
 
 
-/*For slider*/
-.slider-wrapper {
+/*For zoom slider*/
+.slider-wrapper-zoom {
   display: inline-block;
   width: 20px;
   height: 100%;
@@ -61,7 +65,7 @@
   
   z-index: 6;
 }
-.slider-wrapper input {
+.slider-wrapper-zoom input {
   width: 100%;
   height: 100%;
   margin: 0;
@@ -71,13 +75,42 @@
 
 
 
+/*For rotation slider*/
+/*For slider*/
+.slider-wrapper-rotation {
+  display: inline-block;
+  /*width: 80%;*/
+  height: 20px;
+  padding: 0;
+  
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  padding-right: 20px;
+  
+  z-index: 6;
+}
+.slider-wrapper-rotation input {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+
+
 /*box to hold map stuff*/
 #canvasHolder{
 	position: relative;
 	width: 100%;
 }
+/*bottom-layer canvas*/
+#canvasEdges{
+	z-index: 2;
+}
 /*canvas positioned on top of canvasEdges*/
 #canvasVertices{
+	z-index: 3;
 	position:absolute;
 	top: 0;
 	left: 0;

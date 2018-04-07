@@ -19,6 +19,8 @@ import MapVertex from '../../../shared/models/mapvertex';
 import MapEdge from '../../../shared/models/mapedge';
 import DijkstraMapVertex from '../../../shared/models/dijkstramapvertex';
 
+import math = require('mathjs');
+
 
 @Component({
   selector: 'app-map',
@@ -30,6 +32,12 @@ export class MapComponent implements OnInit, AfterViewInit {
 	/*map zoom controls*/
 	selectZoomForm: FormGroup;
 	selectzoom = new FormControl('', [
+		Validators.required
+	]);
+	
+	/*map rotation controls*/
+	selectRotationForm: FormGroup;
+	selectrotation = new FormControl('', [
 		Validators.required
 	]);
 	
@@ -76,6 +84,9 @@ export class MapComponent implements OnInit, AfterViewInit {
 	/*start and end points (IDs of vertices). Will be set to >0 when in use, or <=0 when unused*/
 	startPoint = -1;
 	endPoint = -1;
+	
+	/*boolean to check if rot X&Y have been initialized*/
+	rotInit = false;
 	  
 	constructor(private mapService: MapService,
 				private formBuilder: FormBuilder,
@@ -86,8 +97,11 @@ export class MapComponent implements OnInit, AfterViewInit {
 	ngOnInit() {
 		var parent = this; //store reference to variables from this object
 		
-		/*set the default transformations: zoom: 90%, rotation: 0, xOffset: 0, yOffset: 0*/
-		this.mapTransforms = new MapTransforms(10, 0, 0, 0);
+		/*set the default transformations: zoom: 10%, rotation: 0, rotateX: 0, rotateY: 0, xOffset: 0, yOffset: 0*/
+		//this.mapTransforms = new MapTransforms(10, 0, 0, 0, 0, 0);
+		this.mapTransforms = new MapTransforms();
+		this.mapTransforms.setZoom(10); //default to 10% zoom
+		this.mapTransforms.setRotation(0);
 		
 		console.log("getting map data");
 		this.getMapEdges();
@@ -98,6 +112,10 @@ export class MapComponent implements OnInit, AfterViewInit {
 			selectzoom: this.selectzoom
 		});
 		
+		this.selectRotationForm = this.formBuilder.group({
+			selectrotation: this.selectrotation
+		});
+		
 		/*update mapTransforms zoom on selectzoom change*/
 		this.selectZoomForm.valueChanges.subscribe(data => {
 		  //console.log('Form changes', data.selectzoom)
@@ -106,11 +124,21 @@ export class MapComponent implements OnInit, AfterViewInit {
 				parent.mapTransforms.setZoom(data.selectzoom);
 			}
 		})
+		
+		/*update mapTransforms rotation on selectrotation change*/
+		this.selectRotationForm.valueChanges.subscribe(data => {
+		  //console.log('Form changes', data.selectzoom)
+			if(data.selectrotation != null && parent.cxVertices != null)
+			{
+				parent.mapTransforms.setRotation(data.selectrotation);
+			}
+		})
 	}
 	
 	/*Triggers once view has finished loading*/
 	ngAfterViewInit() {
 		this.selectzoom.setValue(this.mapTransforms.getZoom());//set a default zoom level
+		this.selectrotation.setValue(this.mapTransforms.getRotation());//set a default rotation level
 		//console.log(this.selectzoom.value);
 		//console.log("starting ngAfterViewInit");
 		this.canvasElVertices = this.canvasVerticesLayer.nativeElement;
@@ -142,6 +170,7 @@ export class MapComponent implements OnInit, AfterViewInit {
 		
 		//start animation frames
 		this.animate();
+		
 		
 	}
 	
@@ -240,6 +269,15 @@ export class MapComponent implements OnInit, AfterViewInit {
 	/*perform any animations for this frame*/
 	animate()
 	{
+		//this.mapTransforms.setRotateX(((this.cxVertices.canvas.width/2)/this.mapTransforms.getZoom())-this.mapTransforms.getXOffset()/this.mapTransforms.getZoom());
+		//this.mapTransforms.setRotateY(((this.cxVertices.canvas.height/2)/this.mapTransforms.getZoom())-this.mapTransforms.getYOffset()/this.mapTransforms.getZoom());
+		this.mapTransforms.setRotatePoint(
+			((this.cxVertices.canvas.width/2)/this.mapTransforms.getZoom())-this.mapTransforms.getXOffset()/this.mapTransforms.getZoom(),
+			((this.cxVertices.canvas.height/2)/this.mapTransforms.getZoom())-this.mapTransforms.getYOffset()/this.mapTransforms.getZoom()
+		);
+
+
+
 		var divWidth = document.getElementById("canvasHolder").clientWidth;
 		//console.log(divWidth);
 		/*dynamically scale canvas*/
@@ -247,6 +285,26 @@ export class MapComponent implements OnInit, AfterViewInit {
 		this.cxVertices.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
 		this.cxEdges.canvas.width  = divWidth;
 		this.cxEdges.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
+		
+		
+		/*
+		// Move registration point to the center of the canvas
+		context.translate(canvasWidth/2, canvasWidth/2);
+		// Rotate 1 degree
+		context.rotate(Math.PI / 180);
+		// Move registration point back to the top left corner of canvas
+		context.translate(-canvasWidth/2, -canvasWidth/2);
+		*/
+		
+		/*this.cxVertices.translate(this.cxVertices.canvas.width/2, this.cxVertices.canvas.height/2);
+		this.cxEdges.translate(this.cxEdges.canvas.width/2, this.cxEdges.canvas.height/2);
+		
+		this.cxVertices.rotate((Math.PI / 180)*90);
+		this.cxEdges.rotate((Math.PI / 180)*90);
+		
+		this.cxVertices.translate(-this.cxVertices.canvas.width/2, -this.cxVertices.canvas.height/2);
+		this.cxEdges.translate(-this.cxEdges.canvas.width/2, -this.cxEdges.canvas.height/2);*/
+		
   
 		//Check for animations on the vertices layer
 		/*if(this.continueAnimatingExpand || this.continueAnimatingContract || this.continueAnimatingHide)
@@ -275,6 +333,8 @@ export class MapComponent implements OnInit, AfterViewInit {
 		
 		this.drawVerticesLayer();
 		this.drawEdgesLayer();
+		
+		
 		
 		//restart animation
 		window.requestAnimationFrame(this.animate.bind(this));
@@ -469,10 +529,21 @@ export class MapComponent implements OnInit, AfterViewInit {
 	{
 		var difX = (currentPos.x-prevPos.x);//relative movement in the X direction
 		var difY = (currentPos.y-prevPos.y);//relative movement in the Y direction
+
 		//console.log("dragging map from " + prevPos.x + ", " + prevPos.y + " to " + currentPos.x + ", " + currentPos.y);
 		//console.log("difference: " + difX + ", " + difY);
-		this.mapTransforms.addXOffset(difX);
-		this.mapTransforms.addYOffset(difY);
+		//this.mapTransforms.addXOffset(difX);
+		//this.mapTransforms.addYOffset(difY);
+		this.mapTransforms.addOffset(difX, difY);
+
+		
+		/*var s = Math.sin((Math.PI/180)*this.mapTransforms.getRotation());//get angles
+		var c = Math.cos((Math.PI/180)*this.mapTransforms.getRotation());
+		var newXPos = (difX * c) - (difY * s);//rotate point
+		var newYPos = (difX * s) + (difY * c);
+
+		this.mapTransforms.addXOffset(-newXPos);
+		this.mapTransforms.addYOffset(-newYPos);*/
 	}
 	
 	
@@ -593,12 +664,20 @@ class CanvasMapVertex{
 	isHovered: boolean;
 	isStartPoint: boolean; //true if start point, false if end point (only relevent if isSelected)
 	isHidden: boolean; //true to hide this point (don't draw it)
+
+
+	matrix: math.Matrix; //start matrix for this node
+
 	
 	constructor(_ctx: CanvasRenderingContext2D, _mapTransforms: MapTransforms, _mapVertex: MapVertex)
 	{
 		this.ctx = _ctx;
 		this.mapVertex = _mapVertex;
 		this.mapTransforms = _mapTransforms;
+
+		this.matrix = math.matrix([[this.mapVertex.xPos], [this.mapVertex.yPos], [1]]);
+		//console.log(this.matrix);
+		//console.log(math.subset(this.matrix, math.index(0, 0)));
 		
 		//this.zoom = 10; //multiplier for zooming in
 		this.color = '#1158ff'; //default color
@@ -620,18 +699,14 @@ class CanvasMapVertex{
 	
 	/*Return true if point exists within this circle, or false otherwise*/
 	public isPointOver(newX: number, newY: number){ 
-		return (((newX - ((this.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset()))**2)
-			+ ((newY - ((this.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset()))**2) <= (this.maxCircleSize**2)); 
-	}
-	
-	public drawBackground()
-	{
-		//console.log("Drawing " + this.MapVertex.xPos*this.mapTransforms.getZoom() + ", " + this.MapVertex.yPos*this.mapTransforms.getZoom()+ ", " + this.circleSize);
-		this.ctx.beginPath();
-		this.ctx.arc(this.mapVertex.xPos*this.mapTransforms.getZoom(), this.mapVertex.yPos*this.mapTransforms.getZoom(), this.circleSize+2, 0, Math.PI * 2, true);
-		this.ctx.fillStyle = this.backColor;
-		this.ctx.fill();
-		this.ctx.closePath();
+		/*return (((newX - ((this.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset()))**2)
+			+ ((newY - ((this.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset()))**2) <= (this.maxCircleSize**2)); */
+
+		//var realPoint = this.getRealMapPositions();
+		//var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.matrix);
+		
+		return (((newX - this.getMapX())**2)
+			+ ((newY - this.getMapY())**2) <= (this.maxCircleSize**2));
 	}
 	
 	public drawID()
@@ -643,8 +718,9 @@ class CanvasMapVertex{
 		this.ctx.font = textSize + "px Arial";
 		
 		this.ctx.fillText(String(this.mapVertex.id),
-			((this.mapVertex.xPos*this.mapTransforms.getZoom())-(this.ctx.measureText(String(this.mapVertex.id)).width/2))+this.mapTransforms.getXOffset(),
-			((this.mapVertex.yPos*this.mapTransforms.getZoom())+textHeightOffset)+this.mapTransforms.getYOffset();
+		(this.getMapX()-(this.ctx.measureText(String(this.mapVertex.id)).width/2)),
+		(this.getMapY()+textHeightOffset));
+		
 	}
 	
 	public draw()
@@ -652,8 +728,7 @@ class CanvasMapVertex{
 		/*if(!this.isHidden)
 		{*/
 			//this.drawBackground();
-			this.ctx.save();
-			this.ctx.beginPath();
+			
 			
 			//var time = new Date();
 			
@@ -709,8 +784,41 @@ class CanvasMapVertex{
 			}
 			
 			if(this.circleSize > 0)
-			{
-				this.ctx.arc((this.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(), (this.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset(), this.circleSize, 0, Math.PI * 2, true);
+			{					
+				this.ctx.save();
+				this.ctx.beginPath();
+
+				this.ctx.fillStyle = '#ff0000';
+				//center of screen
+				this.ctx.arc((this.mapTransforms.getRotateX()*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(), (this.mapTransforms.getRotateY()*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset(), this.circleSize, 0, Math.PI * 2, true);
+				this.ctx.fill();
+				this.ctx.closePath();
+				
+
+				//actual rotate point
+				
+				var actualRot = this.mapTransforms.getRotatePoint();
+				var actualRotX = math.subset(actualRot, math.index(0, 0));
+				var actualRotY = math.subset(actualRot, math.index(1, 0));
+
+				this.ctx.beginPath();
+				this.ctx.fillStyle = '#00ff00';
+				this.ctx.arc(actualRotX, actualRotY, this.circleSize, 0, Math.PI * 2, true);
+				this.ctx.fill();
+				this.ctx.closePath();
+
+
+				this.ctx.fillStyle = '#0000ff';
+				
+				this.ctx.beginPath();
+
+				//var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.matrix);
+
+				//console.log(curMatrix);
+
+				this.ctx.arc(this.getMapX(), this.getMapY(), this.circleSize, 0, Math.PI * 2, true);
+				
+				
 				this.ctx.fill();
 				this.ctx.closePath();
 			}
@@ -719,6 +827,18 @@ class CanvasMapVertex{
 			
 			this.drawID();
 		/*}*/
+	}
+
+	//return the calculated Map X position of the point
+	public getMapX() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.matrix);
+		return (math.subset(curMatrix, math.index(0, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getXOffset();
+	}
+
+	//return the calculated Map Y position of the point
+	public getMapY() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.matrix);
+		return (math.subset(curMatrix, math.index(1, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getYOffset();
 	}
 	
 	//call this to update this MapVertex's selected boolean to true, as well as the start point
@@ -875,8 +995,8 @@ class CanvasMapEdge{
 			this.ctx.lineWidth=1;
 			this.ctx.strokeStyle = this.color;
 		}
-		this.ctx.moveTo((this.node1.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(),(this.node1.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset();
-		this.ctx.lineTo((this.node2.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(),(this.node2.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset();
+		this.ctx.moveTo(this.node1.getMapX(), this.node1.getMapY());
+		this.ctx.lineTo(this.node2.getMapX(), this.node2.getMapY());
 		this.ctx.stroke();
 		this.ctx.closePath();
 		
@@ -907,31 +1027,135 @@ class CanvasMapEdge{
 
 
 
-/*A simple class for holding transformation data, specifically: zoom level, rotation, and x&y offset*/
+/*A simple class for holding transformation data, specifically: zoom level, rotation, rotation point(x,y), and x&y offset*/
 class MapTransforms{
 	private zoom: number;
 	private rotation: number;
+	private rotateX: number; //rotation point X
+	private rotateY: number; //rotation point Y
 	private xOffset: number;
 	private yOffset: number;
 	
-	constructor(_zoom: number, _rotation: number, _xOffset: number, _yOffset: number)
-	{
-		this.zoom = _zoom;
-		this.rotation = _rotation;
-		this.xOffset = _xOffset;
-		this.yOffset = _yOffset;
-	}
-	
 	public getZoom(){return this.zoom;}
 	public getRotation(){return this.rotation;}
+	public getRotateX(){return this.rotateX;}
+	public getRotateY(){return this.rotateY;}
 	public getXOffset(){return this.xOffset;}
 	public getYOffset(){return this.yOffset;}
 	
-	public setZoom(_zoom: number){/*console.log("Setting zoom: " + _zoom);*/ this.zoom = _zoom;}
-	public setRotation(_rotation: number){this.rotation = _rotation;}
-	public setXOffset(_xOffset: number){this.xOffset = _xOffset;}
-	public setYOffset(_yOffset: number){this.yOffset = _yOffset;}
+	public setZoom(_zoom: number)
+	{ 
+		var newZoom = _zoom/this.zoom; //find new zoom value
+		this.zoom = _zoom;
+
+		var x = math.subset(this.rotatePoint, math.index(0, 0)); //get position of point before zoom
+		var y = math.subset(this.rotatePoint, math.index(1, 0));
+		//console.log("zoomed, x: " + x + ", y: " + y);
+
+		var x2 = x*newZoom;
+		var y2 = y*newZoom;
+
+		//console.log("Zooms: Old: " + x + ", " + y + "; New: " + x2 + ", " + y2 + ";");
+		var xDiff = x2-x;
+		var yDiff = y2-y;
+
+		console.log("zoom diff: " + xDiff + ", " + yDiff);
+
+		//this.xOffset += xDiff;
+		//this.yOffset += yDiff;
+
+		//offset rotate point by difference
+		this.rotatePoint = math.multiply(math.matrix([[1, 0, xDiff], [0, 1, yDiff], [0, 0, 1]]), this.rotatePoint);
+
+		//this.matrix = math.multiply(this.matrix, math.matrix([[1, 0, -xDiff/this.zoom], [0, 1, -yDiff/this.zoom], [0, 0, 1]]));
+		
+		//this.xOffset -= xDiff;
+		//this.yOffset -= yDiff;
+	}
+
+	public setRotation(_rotation: number)
+	{ 
+		var newRotation = _rotation-this.rotation; //find new rotation in degrees
+		this.rotation = _rotation;
+		
+		var s = Math.sin((Math.PI/180)*newRotation);//get angles
+		var c = Math.cos((Math.PI/180)*newRotation);
+
+		var x = math.subset(this.rotatePoint, math.index(0, 0))/this.zoom; //get x & y coordinates
+		var y = math.subset(this.rotatePoint, math.index(1, 0))/this.zoom;
+
+		this.matrix = math.multiply(this.matrix, math.matrix([[1, 0, x], [0, 1, y], [0, 0, 1]]));//translate to rotation point
+		this.matrix = math.multiply(this.matrix, math.matrix([[c, s, 0], [-s, c, 0], [0, 0, 1]]));//rotate by new degrees
+		this.matrix = math.multiply(this.matrix, math.matrix([[1, 0, -x], [0, 1, -y], [0, 0, 1]]));//translate back
+	}
+
+
+
+
+	public setRotatePoint(_rotateX: number, _rotateY: number)
+	{
+		var rotXDiff = _rotateX-this.rotateX;
+		var rotYDiff = _rotateY-this.rotateY;
+		
+		if(rotXDiff != 0 || rotYDiff != 0)
+		{
+			this.rotateX = _rotateX; this.rotateY = _rotateY;
+
+			var s = Math.sin((Math.PI/180)*this.rotation);//get angles
+			var c = Math.cos((Math.PI/180)*this.rotation);
+			var sT = Math.sin((Math.PI/180)*-this.rotation);//get reverse angles
+			var cT = Math.cos((Math.PI/180)*-this.rotation);
+
+			var x = math.subset(this.rotatePoint, math.index(0, 0)); //get position of point
+			var y = math.subset(this.rotatePoint, math.index(1, 0));
+			
+
+			//rotate to original position
+			this.rotatePoint = math.multiply(math.matrix([[1, 0, -x], [0, 1, -y], [0, 0, 1]]), this.rotatePoint);//translate to rotation point
+			this.rotatePoint = math.multiply(math.matrix([[c, s, 0], [-s, c, 0], [0, 0, 1]]), this.rotatePoint);//rotate by new degrees
+			this.rotatePoint = math.multiply(math.matrix([[1, 0, x], [0, 1, y], [0, 0, 1]]), this.rotatePoint);//translate back
+
+			//offset by new rotate point
+			this.rotatePoint = math.multiply(math.matrix([[1, 0, rotXDiff*this.zoom], [0, 1, rotYDiff*this.zoom], [0, 0, 1]]), this.rotatePoint);
+
+			//rotate back
+			this.rotatePoint = math.multiply(math.matrix([[1, 0, -x], [0, 1, -y], [0, 0, 1]]), this.rotatePoint);//translate to rotation point
+			this.rotatePoint = math.multiply(math.matrix([[cT, sT, 0], [-sT, cT, 0], [0, 0, 1]]), this.rotatePoint);//rotate by new degrees
+			this.rotatePoint = math.multiply(math.matrix([[1, 0, x], [0, 1, y], [0, 0, 1]]), this.rotatePoint);//translate back
+		}
+	}
+
+	public getRotatePoint(){return this.rotatePoint;}
 	
-	public addXOffset(xDif: number){this.xOffset += xDif;}
-	public addYOffset(yDif: number){this.yOffset += yDif;}
+	public addOffset(xDif: number, yDif: number)
+	{
+		this.xOffset += xDif;
+		this.yOffset += yDif;
+
+		//this.matrix = math.multiply(this.matrix, math.matrix([[1, 0, xDif/this.zoom], [0, 1, yDif/this.zoom], [0, 0, 1]]));
+	}
+
+	private identityMatrix: math.Matrix; //identity matrix
+	private matrix: math.Matrix; //the matrix used for transformations
+	private rotatePoint: math.Matrix; //the point of rotation
+
+	constructor()
+	{
+		this.identityMatrix = math.matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]]);
+		this.matrix = this.identityMatrix;
+		this.rotatePoint = math.matrix([[0], [0], [1]]);
+		this.zoom = 1;
+		this.rotation = 0;
+		this.xOffset = 0;
+		this.yOffset = 0;
+		this.rotateX = 0;
+		this.rotateY = 0;
+		//console.log(math.multiply(this.matrix, -1));
+	}
+
+	/*calculate the real matrix now*/
+	public getMatrix()
+	{
+		return this.matrix;
+	}
 }
