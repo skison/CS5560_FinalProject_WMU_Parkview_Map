@@ -788,7 +788,7 @@ class CanvasMapVertex{
 				this.ctx.save();
 				this.ctx.beginPath();
 
-				this.ctx.fillStyle = '#ff0000';
+				/*this.ctx.fillStyle = '#ff0000';
 				//center of screen
 				this.ctx.arc((this.mapTransforms.getRotateX()*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset(), (this.mapTransforms.getRotateY()*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset(), this.circleSize, 0, Math.PI * 2, true);
 				this.ctx.fill();
@@ -810,7 +810,7 @@ class CanvasMapVertex{
 
 				this.ctx.fillStyle = '#0000ff';
 				
-				this.ctx.beginPath();
+				this.ctx.beginPath();*/
 
 				//var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.matrix);
 
@@ -1045,6 +1045,7 @@ class MapTransforms{
 	
 	public setZoom(_zoom: number)
 	{ 
+		var oldZoom = this.zoom; //save old zoom level
 		var newZoom = _zoom/this.zoom; //find new zoom value
 		this.zoom = _zoom;
 
@@ -1061,16 +1062,22 @@ class MapTransforms{
 
 		console.log("zoom diff: " + xDiff + ", " + yDiff);
 
-		//this.xOffset += xDiff;
-		//this.yOffset += yDiff;
-
 		//offset rotate point by difference
 		this.rotatePoint = math.multiply(math.matrix([[1, 0, xDiff], [0, 1, yDiff], [0, 0, 1]]), this.rotatePoint);
 
 		//this.matrix = math.multiply(this.matrix, math.matrix([[1, 0, -xDiff/this.zoom], [0, 1, -yDiff/this.zoom], [0, 0, 1]]));
 		
-		//this.xOffset -= xDiff;
-		//this.yOffset -= yDiff;
+		//Add x & y offset to compensate for zoom level (to keep centered)
+		var offX = this.rotateX*oldZoom;
+		var offY = this.rotateY*oldZoom;
+		var newOffX = this.rotateX*_zoom;
+		var newOffY = this.rotateY*_zoom;
+		var offXDiff = newOffX - offX;
+		var offYDiff = newOffY - offY;
+
+		this.xOffset -= offXDiff;//*this.zoom;
+		this.yOffset -= offYDiff;//*this.zoom;
+
 	}
 
 	public setRotation(_rotation: number)
