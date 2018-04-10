@@ -63,7 +63,13 @@
   right: 0;
   top: 0;
   
-  z-index: 6;
+	z-index: 6;
+	
+	background-color: #e8e8ff;
+	border-radius: 10px;
+	border-width: 1px;
+	border-color: black;
+	border-style: solid;
 }
 .slider-wrapper-zoom input {
   width: 100%;
@@ -87,9 +93,16 @@
   left: 0;
   bottom: 0;
   right: 0;
-  padding-right: 20px;
+	margin-right: 30px;
+	margin-left: 10px;
   
-  z-index: 6;
+	z-index: 6;
+	
+	background-color: #ffeaea;
+	border-radius: 10px;
+	border-width: 1px;
+	border-color: black;
+	border-style: solid;
 }
 .slider-wrapper-rotation input {
   width: 100%;

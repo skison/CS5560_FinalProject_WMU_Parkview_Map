@@ -14,7 +14,7 @@
 			<input type="range" orient="vertical" min=".1" max="100" step=".1" name="selectzoom" [(ngModel)]="zoommodel" formControlName="selectzoom">
 		</div>
 		<div class="slider-wrapper-rotation" [formGroup]="selectRotationForm">
-			<input type="range" min="-180" max="180" step="1" name="selectrotation" [(ngModel)]="rotationmodel" formControlName="selectrotation">
+			<input type="range" min="-180" max="180" step=".1" name="selectrotation" [(ngModel)]="rotationmodel" formControlName="selectrotation">
 		</div>
 		<div id="mapInfo">
 			<p id="zoomInfo">Zoom: {{zoommodel}}%</p>
