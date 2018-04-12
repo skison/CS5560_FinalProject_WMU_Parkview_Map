@@ -14,6 +14,7 @@ import { MapService } from '../services/map.service';
 import { ToastComponent } from '../shared/toast/toast.component';
 import MapVertex from '../../../shared/models/mapvertex';
 import MapEdge from '../../../shared/models/mapedge';
+import MapImage from '../../../shared/models/mapImage';
 import DijkstraMapVertex from '../../../shared/models/dijkstramapvertex';
 
 import math = require('mathjs');
@@ -42,15 +43,21 @@ export class MapComponent implements OnInit, AfterViewInit {
 	mapTransforms: MapTransforms;
 	
 	/*the actual rendered canvases*/
+	@ViewChild('canvasMapImages') public canvasMapImagesLayer: ElementRef;
 	@ViewChild('canvasVertices') public canvasVerticesLayer: ElementRef;
 	@ViewChild('canvasEdges') public canvasEdgesLayer: ElementRef;
 	
+	private cxMapImages: CanvasRenderingContext2D; //handle for drawing to canvas- mapImages layer
 	private cxVertices: CanvasRenderingContext2D; //handle for drawing to canvas- vertices layer
 	private cxEdges: CanvasRenderingContext2D; //handle for drawing to canvas- edges layer
 	
+	private canvasElMapImages: HTMLCanvasElement;
 	private canvasElVertices: HTMLCanvasElement;
 	private canvasElEdges: HTMLCanvasElement;
   
+	//mapImages array
+	mapImages: MapImage[] = [];
+
 	//Actual vertices array and visual vertices array. 
 	vertices: MapVertex[] = []; //stored in whatever order they arrived from the DB
 	canvasVertices: CanvasMapVertex[] = []; //indexed by id
@@ -101,6 +108,7 @@ export class MapComponent implements OnInit, AfterViewInit {
 		this.mapTransforms.setRotation(0);
 		
 		console.log("getting map data");
+		this.getMapImages();
 		this.getMapEdges();
 		this.getMapVertices();
 		this.isLoading = false;
@@ -173,12 +181,20 @@ export class MapComponent implements OnInit, AfterViewInit {
 	
 	
 	
+	/*Get all mapImages from the server*/
+	getMapImages(){
+		this.mapService.getMapImages().subscribe(
+			data => this.mapImages = data,
+			error => console.log(error),
+			() => {this.mapElementsObtained++; if(this.mapElementsObtained == 3){this.createMap();}}
+		);
+	}
 	/*Get all vertices from the server*/
 	getMapVertices(){
 		this.mapService.getMapVertices().subscribe(
 			data => this.vertices = data,
 			error => console.log(error),
-			() => {this.mapElementsObtained++; if(this.mapElementsObtained == 2){this.createMap();}}
+			() => {this.mapElementsObtained++; if(this.mapElementsObtained == 3){this.createMap();}}
 		);
 	}
 	/*Get all mapEdges from the server*/
@@ -186,7 +202,7 @@ export class MapComponent implements OnInit, AfterViewInit {
 		this.mapService.getMapEdges().subscribe(
 			data => this.mapEdges = data,
 			error => console.log(error),
-			() => {this.mapElementsObtained++; if(this.mapElementsObtained == 2){this.createMap();}}
+			() => {this.mapElementsObtained++; if(this.mapElementsObtained == 3){this.createMap();}}
 		);
 	}
 	/*Create the visual map model. Requires the map's vertices and mapEdges to both be loaded*/
@@ -263,78 +279,36 @@ export class MapComponent implements OnInit, AfterViewInit {
 			canvasMapVertex.draw();
 		}); 
 	}
-	/*perform any animations for this frame*/
+	/*perform animations & rendering for this frame*/
 	animate()
 	{
-		//this.mapTransforms.setRotateX(((this.cxVertices.canvas.width/2)/this.mapTransforms.getZoom())-this.mapTransforms.getXOffset()/this.mapTransforms.getZoom());
-		//this.mapTransforms.setRotateY(((this.cxVertices.canvas.height/2)/this.mapTransforms.getZoom())-this.mapTransforms.getYOffset()/this.mapTransforms.getZoom());
-		this.mapTransforms.setRotatePoint(
-			((this.cxVertices.canvas.width/2)/this.mapTransforms.getZoom())-this.mapTransforms.getXOffset()/this.mapTransforms.getZoom(),
-			((this.cxVertices.canvas.height/2)/this.mapTransforms.getZoom())-this.mapTransforms.getYOffset()/this.mapTransforms.getZoom()
-		);
-
-
-
-		var divWidth = document.getElementById("canvasHolder").clientWidth;
-		//console.log(divWidth);
-		/*dynamically scale canvas*/
-		this.cxVertices.canvas.width  = divWidth;
-		this.cxVertices.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
-		this.cxEdges.canvas.width  = divWidth;
-		this.cxEdges.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
+		//console.log("animating");
 		
+		try
+		{		
+			this.mapTransforms.setRotatePoint(
+				((this.cxVertices.canvas.width/2)/this.mapTransforms.getZoom())-this.mapTransforms.getXOffset()/this.mapTransforms.getZoom(),
+				((this.cxVertices.canvas.height/2)/this.mapTransforms.getZoom())-this.mapTransforms.getYOffset()/this.mapTransforms.getZoom()
+			);
 		
-		/*
-		// Move registration point to the center of the canvas
-		context.translate(canvasWidth/2, canvasWidth/2);
-		// Rotate 1 degree
-		context.rotate(Math.PI / 180);
-		// Move registration point back to the top left corner of canvas
-		context.translate(-canvasWidth/2, -canvasWidth/2);
-		*/
-		
-		/*this.cxVertices.translate(this.cxVertices.canvas.width/2, this.cxVertices.canvas.height/2);
-		this.cxEdges.translate(this.cxEdges.canvas.width/2, this.cxEdges.canvas.height/2);
-		
-		this.cxVertices.rotate((Math.PI / 180)*90);
-		this.cxEdges.rotate((Math.PI / 180)*90);
-		
-		this.cxVertices.translate(-this.cxVertices.canvas.width/2, -this.cxVertices.canvas.height/2);
-		this.cxEdges.translate(-this.cxEdges.canvas.width/2, -this.cxEdges.canvas.height/2);*/
-		
-  
-		//Check for animations on the vertices layer
-		/*if(this.continueAnimatingExpand || this.continueAnimatingContract || this.continueAnimatingHide)
-		{
-			//console.log("animating");
-			
-			this.continueAnimatingExpand = false; this.continueAnimatingContract = false; this.continueAnimatingHide = false;//reset booleans to false
-			
-			this.canvasVertices.forEach(function (canvasMapVertex) {
-				if(canvasMapVertex.getIsHidden()) //only hide nodes that should be hidden
-				{
-					if(!canvasMapVertex.isFullyHidden()){ this.continueAnimatingHide = true; }//still needs to contract more
-				}
-				else if(!canvasMapVertex.getIsSelected() && !canvasMapVertex.getIsHovered()) //only contract non-selected and non-hovered nodes
-				{
-					if(!canvasMapVertex.isFullyContracted()){ this.continueAnimatingContract = true; }//still needs to contract more
-				}
-				else if(canvasMapVertex.getIsSelected() || canvasMapVertex.getIsHovered()) //only expand non-selected and non-hovered nodes
-				{
-					if(!canvasMapVertex.isFullyExpanded()){  this.continueAnimatingExpand = true; }//still needs to expand more
-				}
-			}.bind(this));
+			var divWidth = document.getElementById("canvasHolder").clientWidth;
+			//console.log(divWidth);
+			/*dynamically scale canvas*/
+			this.cxVertices.canvas.width  = divWidth;
+			this.cxVertices.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
+			this.cxEdges.canvas.width  = divWidth;
+			this.cxEdges.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
 			
 			this.drawVerticesLayer();
-		}*/
-		
-		this.drawVerticesLayer();
-		this.drawEdgesLayer();
-		
-		
-		
-		//restart animation
-		window.requestAnimationFrame(this.animate.bind(this));
+			this.drawEdgesLayer();
+			
+			//restart animation
+			window.requestAnimationFrame(this.animate.bind(this));
+		}
+		catch(e)
+		{
+			console.log("animation stopped: " + e);
+		}
 	}
 	
 	
@@ -1057,7 +1031,7 @@ class MapTransforms{
 		var xDiff = x2-x;
 		var yDiff = y2-y;
 
-		console.log("zoom diff: " + xDiff + ", " + yDiff);
+		//console.log("zoom diff: " + xDiff + ", " + yDiff);
 
 		//offset rotate point by difference
 		this.rotatePoint = math.multiply(math.matrix([[1, 0, xDiff], [0, 1, yDiff], [0, 0, 1]]), this.rotatePoint);

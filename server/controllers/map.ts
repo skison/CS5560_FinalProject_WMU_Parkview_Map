@@ -4,10 +4,12 @@ import DijkstraMapVertex from '../../shared/models/dijkstramapvertex';
 
 import Vertex from '../models/vertex';
 import Edge from '../models/edge';
+import MapImage from '../models/mapImage';
 
 export default class MapCtrl {
 	vertexModel = Vertex;
 	edgeModel = Edge;  
+	mapImageModel = MapImage;
   
 	/*Return all the edges in the DB*/
 	getAllEdges = (req, res) => {
@@ -25,6 +27,15 @@ export default class MapCtrl {
 		this.vertexModel.find({}, (err, docs) => {
 			if (err) { return console.error(err); }
 			//console.log(docs);
+			res.status(200).json(docs);
+		});
+	}
+
+	/*Return all the mapImages in the DB*/
+	getAllMapImages = (req, res) => {
+		console.log("returning all mapImages");
+		this.mapImageModel.find({}, (err, docs) => {
+			if (err) { return console.error(err); }
 			res.status(200).json(docs);
 		});
 	}

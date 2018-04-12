@@ -13,6 +13,8 @@ export default function setRoutes(app) {
   // Map
   router.route('/getvertices').post(mapCtrl.getAllVertices);
   router.route('/getedges').post(mapCtrl.getAllEdges);
+  router.route('/getmapimages').post(mapCtrl.getAllMapImages);
+
   router.route('/getpath').get(mapCtrl.getPath);
 
   // Apply the routes to our application with the prefix /api

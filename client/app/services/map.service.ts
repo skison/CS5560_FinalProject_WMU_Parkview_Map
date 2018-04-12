@@ -4,6 +4,7 @@ import { Observable } from 'rxjs/Observable';
 
 import MapVertex from '../../../shared/models/mapvertex';
 import MapEdge from '../../../shared/models/mapedge';
+import MapImage from '../../../shared/models/mapImage';
 import DijkstraMapVertex from '../../../shared/models/dijkstramapvertex';
 
 @Injectable()
@@ -18,6 +19,10 @@ export class MapService {
   
   getMapEdges(): Observable<MapEdge[]>{
 	  return this.http.post<MapEdge[]>('/api/getedges', {});
+  }
+
+  getMapImages(): Observable<MapImage[]>{
+	  return this.http.post<MapImage[]>('/api/getmapimages', {});
   }
   
   getPath(startID: number, endID: number): Observable<DijkstraMapVertex[]>{
