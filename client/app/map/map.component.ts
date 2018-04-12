@@ -9,9 +9,6 @@ import 'rxjs/add/operator/takeUntil';
 import 'rxjs/add/operator/pairwise';
 import 'rxjs/add/operator/switchMap';
 
-//added to show current user
-import { AuthService } from '../services/auth.service';
-
 import { MapService } from '../services/map.service';
 
 import { ToastComponent } from '../shared/toast/toast.component';
