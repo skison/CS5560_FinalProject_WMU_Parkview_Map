@@ -8,7 +8,7 @@
   
 	<div id="canvasHolder" #canvasHolder>
 		<div id="loadPath" [ngClass]="{'showLoading' : isGettingPath}">Loading...</div>
-		<canvas id="canvasMapImages" #canvasEdges></canvas>
+		<canvas id="canvasMapImages" #canvasMapImages></canvas>
 		<canvas id="canvasEdges" #canvasEdges></canvas>
 		<canvas id="canvasVertices" #canvasVertices></canvas>
 		<div class="slider-wrapper-zoom" [formGroup]="selectZoomForm">
@@ -87,6 +87,40 @@
         </tr>  
       </tbody>
 	</table>
+
+	<table class="table table-bordered">
+		<thead class="thead-light">
+			<tr>
+		<th scope="col">MapImage</th>
+		<th scope="col">Top Left X</th>
+		<th scope="col">Top Left Y</th>
+		<th scope="col">Top Right X</th>
+		<th scope="col">Top Right Y</th>
+		<th scope="col">Bottom Right X</th>
+		<th scope="col">Bottom Right Y</th>
+		<th scope="col">Floor</th>
+			</tr>
+		</thead>
+		<tbody *ngIf="mapImages.length === 0">
+			<tr>
+				<td colspan="8">There are no mapImages in the DB.</td>
+			</tr>  
+		</tbody>
+		<tbody>
+			<tr *ngFor="let mapImage of mapImages">
+		<ng-container>
+			<td>{{mapImage.name}}</td>
+			<td>{{mapImage.topLeftX}}</td>
+			<td>{{mapImage.topLeftY}}</td>
+			<td>{{mapImage.topRightX}}</td>
+			<td>{{mapImage.topRightY}}</td>
+			<td>{{mapImage.bottomRightX}}</td>
+			<td>{{mapImage.bottomRightY}}</td>
+			<td>{{mapImage.floor}}</td>
+		</ng-container>
+			</tr>  
+		</tbody>
+</table>
     
   </div>
 </div>

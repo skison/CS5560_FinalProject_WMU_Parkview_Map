@@ -55,8 +55,9 @@ export class MapComponent implements OnInit, AfterViewInit {
 	private canvasElVertices: HTMLCanvasElement;
 	private canvasElEdges: HTMLCanvasElement;
   
-	//mapImages array
+	//Actual mapImages array and visual mapImages array
 	mapImages: MapImage[] = [];
+	canvasMapImages: CanvasMapImage[] = [];
 
 	//Actual vertices array and visual vertices array. 
 	vertices: MapVertex[] = []; //stored in whatever order they arrived from the DB
@@ -148,17 +149,23 @@ export class MapComponent implements OnInit, AfterViewInit {
 		//console.log("starting ngAfterViewInit");
 		this.canvasElVertices = this.canvasVerticesLayer.nativeElement;
 		this.canvasElEdges = this.canvasEdgesLayer.nativeElement;
+		this.canvasElMapImages = this.canvasMapImagesLayer.nativeElement;
 		//console.log(this.canvas.nativeElement);
 		
 		/*default canvas size; could be made responsive by dynamically changing these on screen size*/
-		this.canvasElVertices.width = 600;
-		this.canvasElVertices.height = 450;
-		
-		this.canvasElEdges.width = 600;
-		this.canvasElEdges.height = 450;
-		
+		var defaultWidth = 600;
+		var defaultHeight = 450;
+
+		this.canvasElVertices.width = defaultWidth;
+		this.canvasElVertices.height = defaultHeight;
+		this.canvasElEdges.width = defaultWidth;
+		this.canvasElEdges.height = defaultHeight;
+		this.canvasElMapImages.width = defaultWidth;
+		this.canvasElMapImages.height = defaultHeight;
+
 		this.cxVertices = this.canvasElVertices.getContext('2d');
 		this.cxEdges = this.canvasElEdges.getContext('2d');
+		this.cxMapImages = this.canvasElMapImages.getContext('2d');
 		
 		//this.cxVertices.translate(0.5, 0.5); //allow for smoother lines (less unnecessary anti-aliasing)
 		//this.cxEdges.translate(0.5, 0.5); //allow for smoother lines (less unnecessary anti-aliasing)
@@ -217,7 +224,6 @@ export class MapComponent implements OnInit, AfterViewInit {
 			parent.canvasVertices[mapVertex.id] = (new CanvasMapVertex(parent.cxVertices, parent.mapTransforms, mapVertex));
 		}); 
 		
-		
 		//create canvasEdges
 		this.mapEdges.forEach(function (mapEdge) {
 			var firstNode = parent.canvasVertices[mapEdge.node1];
@@ -233,6 +239,11 @@ export class MapComponent implements OnInit, AfterViewInit {
 			parent.canvasEdgesLinked[mapEdge.node1].push(thisCanvasMapEdge);
 			parent.canvasEdgesLinked[mapEdge.node2].push(thisCanvasMapEdge);
 		}); 
+
+		//create canvasMapImages
+		this.mapImages.forEach(function (mapImage) {
+			parent.canvasMapImages.push(new CanvasMapImage(parent.cxMapImages, parent.mapTransforms, mapImage));
+		});
 		
 		this.mapReadyCounter++;
 		//console.log("createMap complete");
@@ -279,6 +290,16 @@ export class MapComponent implements OnInit, AfterViewInit {
 			canvasMapVertex.draw();
 		}); 
 	}
+	/*Just draw the mapImages layer*/
+	drawMapImagesLayer()
+	{
+		//clear layer first
+		this.cxMapImages.clearRect(0, 0, this.canvasElMapImages.width, this.canvasElMapImages.height);
+
+		this.canvasMapImages.forEach(function (canvasMapImage) {
+			canvasMapImage.draw();
+		}); 
+	}
 	/*perform animations & rendering for this frame*/
 	animate()
 	{
@@ -291,14 +312,19 @@ export class MapComponent implements OnInit, AfterViewInit {
 				((this.cxVertices.canvas.height/2)/this.mapTransforms.getZoom())-this.mapTransforms.getYOffset()/this.mapTransforms.getZoom()
 			);
 		
-			var divWidth = document.getElementById("canvasHolder").clientWidth;
 			//console.log(divWidth);
-			/*dynamically scale canvas*/
+			/*dynamically scale canvas to largest appropriate size*/
+			var divWidth = document.getElementById("canvasHolder").clientWidth;
+			var divHeight = divWidth*.5625; //keep 16:9 aspect ratio
+
+			this.cxMapImages.canvas.width = divWidth;
+			this.cxMapImages.canvas.height = divHeight;
 			this.cxVertices.canvas.width  = divWidth;
-			this.cxVertices.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
+			this.cxVertices.canvas.height = divHeight;
 			this.cxEdges.canvas.width  = divWidth;
-			this.cxEdges.canvas.height = divWidth*.5625; //keep 16:9 aspect ratio
+			this.cxEdges.canvas.height = divHeight;
 			
+			this.drawMapImagesLayer();
 			this.drawVerticesLayer();
 			this.drawEdgesLayer();
 			
@@ -841,6 +867,145 @@ class CanvasMapVertex{
 	public getIsSelected() {return this.isSelected;}
 	public getIsHovered() {return this.isHovered;}
 	public getIsHidden() {return this.isHidden;}
+};
+
+
+
+
+
+
+
+
+
+/*Visual representation of mapImages*/
+class CanvasMapImage{
+	
+	ctx: CanvasRenderingContext2D;
+	mapImage: MapImage;
+	mapTransforms: MapTransforms;
+	img = new Image; //image of the map
+
+	//start matrices for this mapImage
+	topLeftMatrix: math.Matrix;
+	topRightMatrix: math.Matrix;
+	bottomRightMatrix: math.Matrix;
+
+	
+	constructor(_ctx: CanvasRenderingContext2D, _mapTransforms: MapTransforms, _mapImage: MapImage)
+	{
+		this.ctx = _ctx;
+		this.mapImage = _mapImage;
+		this.mapTransforms = _mapTransforms;
+		
+		//this.img = new Image;
+		this.img.src = "assets/mapImages/" + this.mapImage.name;
+
+		this.topLeftMatrix = math.matrix([[this.mapImage.topLeftX], [this.mapImage.topLeftY], [1]]);
+		this.topRightMatrix = math.matrix([[this.mapImage.topRightX], [this.mapImage.topRightY], [1]]);
+		this.bottomRightMatrix = math.matrix([[this.mapImage.bottomRightX], [this.mapImage.bottomRightY], [1]]);
+	}
+
+	public draw()
+	{				
+		var curTopLeftX = this.getCurTopLeftX();
+		var curTopLeftY = this.getCurTopLeftY();
+		var curTopRightX = this.getCurTopRightX();
+		var curTopRightY = this.getCurTopRightY();
+		var curBottomRightX = this.getCurBottomRightX();
+		var curBottomRightY = this.getCurBottomRightY();
+
+		//top left point
+		this.ctx.save();
+		this.ctx.beginPath();
+		this.ctx.arc(curTopLeftX, curTopLeftY, 10, 0, Math.PI * 2, true);
+		this.ctx.fill();
+		this.ctx.closePath();
+
+		//top right point
+		this.ctx.save();
+		this.ctx.beginPath();
+		this.ctx.arc(curTopRightX, curTopRightY, 10, 0, Math.PI * 2, true);
+		this.ctx.fill();
+		this.ctx.closePath();
+
+		//bottom right point
+		this.ctx.save();
+		this.ctx.beginPath();
+		this.ctx.arc(curBottomRightX, curBottomRightY, 10, 0, Math.PI * 2, true);
+		this.ctx.fill();
+		this.ctx.closePath();
+
+		//var curWidth = //curTopRightX - curTopLeftX;
+		//var curHeight = //curTopRightY - curBottomRightY;
+		var aW = curTopRightX - curTopLeftX;
+		var bW = curTopRightY - curTopLeftY;
+		var curWidth = Math.sqrt( aW*aW + bW*bW );
+
+		var aH = curTopRightX - curBottomRightX;
+		var bH = curTopRightY - curBottomRightY;
+		var curHeight = Math.sqrt( aH*aH + bH*bH );
+
+
+		var dy = curTopRightY - curTopLeftY;
+		var dx = curTopRightX - curTopLeftX;
+		var theta = Math.atan2(dy, dx); // range (-PI, PI]
+		//theta *= 180 / Math.PI; // rads to degs, range (-180, 180]
+		//if (theta < 0) theta = 360 + theta; // range [0, 360)
+		//return theta;
+
+		this.ctx.save();
+		//rotate canvas around top left point 
+		this.ctx.translate( curTopLeftX, curTopLeftY );
+		this.ctx.rotate( /*rotationAmountInRadians*/ theta );
+		this.ctx.translate( -curTopLeftX, -curTopLeftY );
+
+		//draw image
+		this.ctx.rect(curTopLeftX, curTopLeftY, curWidth, curHeight);
+		
+		try{
+			this.ctx.drawImage(this.img, curTopLeftX, curTopLeftY, curWidth, curHeight);
+			this.ctx.stroke();
+		}
+		catch(e) //draw image error
+		{
+			console.log("Image drawing error: " + e);
+		}
+
+		
+
+		this.ctx.restore(); //restore rotation
+	}
+
+	//return the calculated top left X position of the point
+	public getCurTopLeftX() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.topLeftMatrix);
+		return (math.subset(curMatrix, math.index(0, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getXOffset();
+	}
+	//return the calculated top left Y position of the point
+	public getCurTopLeftY() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.topLeftMatrix);
+		return (math.subset(curMatrix, math.index(1, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getYOffset();
+	}
+	//return the calculated top right X position of the point
+	public getCurTopRightX() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.topRightMatrix);
+		return (math.subset(curMatrix, math.index(0, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getXOffset();
+	}
+	//return the calculated top right Y position of the point
+	public getCurTopRightY() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.topRightMatrix);
+		return (math.subset(curMatrix, math.index(1, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getYOffset();
+	}
+	//return the calculated bottom right X position of the point
+	public getCurBottomRightX() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.bottomRightMatrix);
+		return (math.subset(curMatrix, math.index(0, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getXOffset();
+	}
+	//return the calculated bottom right Y position of the point
+	public getCurBottomRightY() {
+		var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.bottomRightMatrix);
+		return (math.subset(curMatrix, math.index(1, 0)))*this.mapTransforms.getZoom()+this.mapTransforms.getYOffset();
+	}
 };
 
 
