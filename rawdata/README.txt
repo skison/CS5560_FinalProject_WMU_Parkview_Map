@@ -5,8 +5,8 @@ For Windows:
   2. Open a command prompt and cd into 'MongoDB\Server\3.6\bin'(or where ever 'mongoimport.exe' is stored)
   3. Run the following commands:
   
-    mongoimport --db parkview --collection vertices --drop --type csv --headerline --fields "id.int32(),xPos.double(),yPos.double(),floor.int32(),location.string(),name.string()" --file updatedcoords.csv
-    mongoimport --db parkview --collection edges --drop --type csv --headerline --fields "node1.int32(),node2.int32(),traveltype.string()" --file updatededges.csv
+    mongoimport --db parkview --collection vertices --drop --type csv --headerline --file updatedcoords.csv
+    mongoimport --db parkview --collection edges --drop --type csv --headerline --file updatededges.csv
 
   4. If successful, you should see something like the following being returned: 
   
@@ -23,6 +23,6 @@ For Windows:
 For Linux:
   1. No need to move the csv files anywhere or cd anywhere. Simply run the following commands in any directory that the .csv files are in:
   
-     mongoimport --db parkview --collection vertices --drop --type csv --headerline --fields "id.int32(),xPos.double(),yPos.double(),floor.int32(),location.string(),name.string()" --file updatedcoords.csv
-     mongoimport --db parkview --collection edges --drop --type csv --headerline --fields "node1.int32(),node2.int32(),traveltype.string()" --file updatededges.csv
+     mongoimport --db parkview --collection vertices --drop --type csv --headerline --file updatedcoords.csv
+     mongoimport --db parkview --collection edges --drop --type csv --headerline --file updatededges.csv
 
