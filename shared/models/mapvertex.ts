@@ -4,4 +4,6 @@ export default class MapVertex {
   xPos?: number;
   yPos?: number;
   floor?: number;
+  location?: string;
+  name?: string;
 }
