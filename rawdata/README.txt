@@ -21,7 +21,7 @@ For Windows:
     2018-04-18T20:41:18.471-0400    imported 303 documents
     
 For Linux:
-  1. No need to move the csv files anywhere or cd anywhere. Simply run the following commands in any directory:
+  1. No need to move the csv files anywhere or cd anywhere. Simply run the following commands in any directory that the .csv files are in:
   
      mongoimport --db parkview --collection vertices --drop --type csv --columnsHaveTypes --fields "id.int32(),xPos.double(),yPos.double(),floor.int32(),location.string(),name.string()" --file updatedcoords.csv
      mongoimport --db parkview --collection edges --drop --type csv --columnsHaveTypes --fields "node1.int32(),node2.int32(),traveltype.string()" --file updatededges.csv
