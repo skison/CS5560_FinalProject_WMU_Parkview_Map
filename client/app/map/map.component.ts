@@ -105,8 +105,9 @@ export class MapComponent implements OnInit, AfterViewInit {
 		/*set the default transformations: zoom: 10%, rotation: 0, rotateX: 0, rotateY: 0, xOffset: 0, yOffset: 0*/
 		//this.mapTransforms = new MapTransforms(10, 0, 0, 0, 0, 0);
 		this.mapTransforms = new MapTransforms();
-		this.mapTransforms.setZoom(10); //default to 10% zoom
+		this.mapTransforms.setZoom(150000); //default to 10% zoom
 		this.mapTransforms.setRotation(0);
+		this.mapTransforms.addOffset((85.642 - 22.2498)*150000,(42.252 + .0037)*150000);
 		
 		console.log("getting map data");
 		this.getMapImages();
@@ -672,7 +673,12 @@ class CanvasMapVertex{
 		this.mapVertex = _mapVertex;
 		this.mapTransforms = _mapTransforms;
 
-		this.matrix = math.matrix([[this.mapVertex.xPos], [this.mapVertex.yPos], [1]]);
+		//equirectangular projections!
+		//x = longitude * cos(center latitude)
+		//y = latitude 
+		//center altitude := 42.254045
+		//cos(42.254045) = 0.740171
+		this.matrix = math.matrix([[this.mapVertex.xPos * 0.740171], [-this.mapVertex.yPos], [1]]);
 		//console.log(this.matrix);
 		//console.log(math.subset(this.matrix, math.index(0, 0)));
 		
@@ -1086,10 +1092,35 @@ class CanvasMapEdge{
 		else{return null;}
 	}
 	
+	public degreesToRadians(degrees : number) {
+		return (degrees * Math.PI / 180);
+	} 
+	
 	/*find the distance between the nodes*/
 	public getDistance()
 	{
-		return Math.sqrt((this.node2.mapVertex.xPos - this.node1.mapVertex.xPos)**2 + (this.node2.mapVertex.yPos - this.node1.mapVertex.yPos)**2);
+		//return Math.sqrt((this.node2.mapVertex.xPos - this.node1.mapVertex.xPos)**2 + (this.node2.mapVertex.yPos - this.node1.mapVertex.yPos)**2);
+		
+		//latitude is y coordinates
+		//longitude is x coordinates 
+		lat1 = this.node1.mapVertex.yPos;
+		lon1 = this.node1.mapVertex.xPos;
+		lat2 = this.node2.mapVertex.yPos;
+		lon2 = this.node2.mapVertex.xPos;
+		
+		var earthRadiusKm = 6371;
+
+		var dLat = degreesToRadians(lat2-lat1);
+		var dLon = degreesToRadians(lon2-lon1);
+
+		lat1 = degreesToRadians(lat1);
+		lat2 = degreesToRadians(lat2);
+
+		var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.sin(dLon/2) * Math.sin(dLon/2) * Math.cos(lat1) * Math.cos(lat2); 
+		var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+		
+		return (earthRadiusKm * c); 
+		
 	}
 	
 	public drawDistance()
