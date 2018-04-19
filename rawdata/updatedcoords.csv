@@ -73,7 +73,7 @@
 73,-85.640990,42.253746,1,Floyd,C113
 74,-85.641001,42.253820,1,Floyd,Start of A-C Wing First Floor
 75,-85.640854,42.253766,1,Floyd,C Exit
-76,-85.641099,42.254072,1,The Parkview Entrance
+76,-85.641099,42.254072,1,Floyd,The Parkview Entrance
 77,-85.640942,42.254276,1,Floyd,Hallway to A-C Wing
 78,-85.640692,42.254348,1,Floyd,Floyd Main Entrance
 79,-85.640691,42.254314,1,Floyd,Main Entrance Between Stairs
@@ -299,7 +299,7 @@
 299,-85.640296,42.254100,2,Floyd,E Staircase
 300,-85.639810,42.254373,2,Floyd,EF Commons Hall Second Floor
 301,-85.639830,42.254416,2,Floyd,E Commons
-302,-85.639750,42.254244,1,Floyd,EF Staircase
+302,-85.639750,42.254244,2,Floyd,EF Staircase
 303,-85.639025,42.254579,2,Floyd,FG Commons Hall Second Floor
 304,-85.639045,42.254622,2,Floyd,F Commons
 305,-85.638965,42.254450,2,Floyd,FG Staircase
