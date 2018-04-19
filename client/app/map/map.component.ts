@@ -17,7 +17,7 @@ import MapEdge from '../../../shared/models/mapedge';
 import MapImage from '../../../shared/models/mapImage';
 import DijkstraMapVertex from '../../../shared/models/dijkstramapvertex';
 
-import math = require('mathjs');
+import * as math from 'mathjs';
 
 
 @Component({
