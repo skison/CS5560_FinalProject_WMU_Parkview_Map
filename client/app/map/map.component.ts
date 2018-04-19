@@ -38,6 +38,12 @@ export class MapComponent implements OnInit, AfterViewInit {
 	selectrotation = new FormControl('', [
 		Validators.required
 	]);
+
+	/*map options controls*/
+	selectOptionsForm: FormGroup;
+	selectfloor = new FormControl('', [
+		Validators.required
+	]);
 	
 	/*map transformations holder (zoom, rotation, x&y offsets, etc.)*/
 	mapTransforms: MapTransforms;
@@ -122,6 +128,10 @@ export class MapComponent implements OnInit, AfterViewInit {
 		this.selectRotationForm = this.formBuilder.group({
 			selectrotation: this.selectrotation
 		});
+
+		this.selectOptionsForm = this.formBuilder.group({
+			selectfloor: this.selectfloor
+		});
 		
 		/*update mapTransforms zoom on selectzoom change*/
 		this.selectZoomForm.valueChanges.subscribe(data => {
@@ -140,12 +150,22 @@ export class MapComponent implements OnInit, AfterViewInit {
 				parent.mapTransforms.setRotation(data.selectrotation);
 			}
 		})
+
+		/*update options choices on change*/
+		this.selectOptionsForm.valueChanges.subscribe(data => {
+		//console.log('Form changes', data.selectzoom)
+			if(data.selectfloor != null)
+			{
+				parent.mapTransforms.setFloor(data.selectfloor);
+			}
+		})
 	}
 	
 	/*Triggers once view has finished loading*/
 	ngAfterViewInit() {
 		this.selectzoom.setValue(this.mapTransforms.getZoom());//set a default zoom level
 		this.selectrotation.setValue(this.mapTransforms.getRotation());//set a default rotation level
+		this.selectfloor.setValue(1); //default to 1st floor
 		//console.log(this.selectzoom.value);
 		//console.log("starting ngAfterViewInit");
 		this.canvasElVertices = this.canvasVerticesLayer.nativeElement;
@@ -700,16 +720,14 @@ class CanvasMapVertex{
 		this.isHidden = false;
 	}
 	
-	/*Return true if point exists within this circle, or false otherwise*/
+	/*Return true if point exists within this circle, or false otherwise. ONLY CONSIDER THIS NODE IF IT IS PART OF THE CURRENT FLOOR OR IS SELECTED!*/
 	public isPointOver(newX: number, newY: number){ 
-		/*return (((newX - ((this.mapVertex.xPos*this.mapTransforms.getZoom())+this.mapTransforms.getXOffset()))**2)
-			+ ((newY - ((this.mapVertex.yPos*this.mapTransforms.getZoom())+this.mapTransforms.getYOffset()))**2) <= (this.maxCircleSize**2)); */
-
-		//var realPoint = this.getRealMapPositions();
-		//var curMatrix = math.multiply(this.mapTransforms.getMatrix(), this.matrix);
-		
-		return (((newX - this.getMapX())**2)
-			+ ((newY - this.getMapY())**2) <= (this.maxCircleSize**2));
+		if(this.mapVertex.floor == this.mapTransforms.getFloor() || this.isSelected)
+		{
+			return (((newX - this.getMapX())**2)
+				+ ((newY - this.getMapY())**2) <= (this.maxCircleSize**2));
+		}
+		else{ return false; }
 	}
 	
 	public drawID()
@@ -728,8 +746,8 @@ class CanvasMapVertex{
 	
 	public draw()
 	{
-		/*if(!this.isHidden)
-		{*/
+		if(this.mapVertex.floor == this.mapTransforms.getFloor() || this.isSelected) //make sure it is on the current floor or is selected
+		{
 			//this.drawBackground();
 			
 			
@@ -829,7 +847,7 @@ class CanvasMapVertex{
 			this.ctx.restore();
 			
 			this.drawID();
-		/*}*/
+		}
 	}
 
 	//return the calculated Map X position of the point
@@ -913,73 +931,74 @@ class CanvasMapImage{
 
 	public draw()
 	{				
-		var curTopLeftX = this.getCurTopLeftX();
-		var curTopLeftY = this.getCurTopLeftY();
-		var curTopRightX = this.getCurTopRightX();
-		var curTopRightY = this.getCurTopRightY();
-		var curBottomRightX = this.getCurBottomRightX();
-		var curBottomRightY = this.getCurBottomRightY();
-
-		//top left point
-		this.ctx.save();
-		this.ctx.beginPath();
-		this.ctx.arc(curTopLeftX, curTopLeftY, 10, 0, Math.PI * 2, true);
-		this.ctx.fill();
-		this.ctx.closePath();
-
-		//top right point
-		this.ctx.save();
-		this.ctx.beginPath();
-		this.ctx.arc(curTopRightX, curTopRightY, 10, 0, Math.PI * 2, true);
-		this.ctx.fill();
-		this.ctx.closePath();
-
-		//bottom right point
-		this.ctx.save();
-		this.ctx.beginPath();
-		this.ctx.arc(curBottomRightX, curBottomRightY, 10, 0, Math.PI * 2, true);
-		this.ctx.fill();
-		this.ctx.closePath();
-
-		//var curWidth = //curTopRightX - curTopLeftX;
-		//var curHeight = //curTopRightY - curBottomRightY;
-		var aW = curTopRightX - curTopLeftX;
-		var bW = curTopRightY - curTopLeftY;
-		var curWidth = Math.sqrt( aW*aW + bW*bW );
-
-		var aH = curTopRightX - curBottomRightX;
-		var bH = curTopRightY - curBottomRightY;
-		var curHeight = Math.sqrt( aH*aH + bH*bH );
-
-
-		var dy = curTopRightY - curTopLeftY;
-		var dx = curTopRightX - curTopLeftX;
-		var theta = Math.atan2(dy, dx); // range (-PI, PI]
-		//theta *= 180 / Math.PI; // rads to degs, range (-180, 180]
-		//if (theta < 0) theta = 360 + theta; // range [0, 360)
-		//return theta;
-
-		this.ctx.save();
-		//rotate canvas around top left point 
-		this.ctx.translate( curTopLeftX, curTopLeftY );
-		this.ctx.rotate( /*rotationAmountInRadians*/ theta );
-		this.ctx.translate( -curTopLeftX, -curTopLeftY );
-
-		//draw image
-		this.ctx.rect(curTopLeftX, curTopLeftY, curWidth, curHeight);
-		
-		try{
-			this.ctx.drawImage(this.img, curTopLeftX, curTopLeftY, curWidth, curHeight);
-			this.ctx.stroke();
-		}
-		catch(e) //draw image error
+		if(this.mapImage.floor == this.mapTransforms.getFloor()) //make sure it is on the current floor
 		{
-			console.log("Image drawing error: " + e);
+			var curTopLeftX = this.getCurTopLeftX();
+			var curTopLeftY = this.getCurTopLeftY();
+			var curTopRightX = this.getCurTopRightX();
+			var curTopRightY = this.getCurTopRightY();
+			var curBottomRightX = this.getCurBottomRightX();
+			var curBottomRightY = this.getCurBottomRightY();
+
+			//top left point
+			this.ctx.save();
+			this.ctx.beginPath();
+			this.ctx.arc(curTopLeftX, curTopLeftY, 10, 0, Math.PI * 2, true);
+			this.ctx.fill();
+			this.ctx.closePath();
+
+			//top right point
+			this.ctx.save();
+			this.ctx.beginPath();
+			this.ctx.arc(curTopRightX, curTopRightY, 10, 0, Math.PI * 2, true);
+			this.ctx.fill();
+			this.ctx.closePath();
+
+			//bottom right point
+			this.ctx.save();
+			this.ctx.beginPath();
+			this.ctx.arc(curBottomRightX, curBottomRightY, 10, 0, Math.PI * 2, true);
+			this.ctx.fill();
+			this.ctx.closePath();
+
+			//var curWidth = //curTopRightX - curTopLeftX;
+			//var curHeight = //curTopRightY - curBottomRightY;
+			var aW = curTopRightX - curTopLeftX;
+			var bW = curTopRightY - curTopLeftY;
+			var curWidth = Math.sqrt( aW*aW + bW*bW );
+
+			var aH = curTopRightX - curBottomRightX;
+			var bH = curTopRightY - curBottomRightY;
+			var curHeight = Math.sqrt( aH*aH + bH*bH );
+
+
+			var dy = curTopRightY - curTopLeftY;
+			var dx = curTopRightX - curTopLeftX;
+			var theta = Math.atan2(dy, dx); // range (-PI, PI]
+			//theta *= 180 / Math.PI; // rads to degs, range (-180, 180]
+			//if (theta < 0) theta = 360 + theta; // range [0, 360)
+			//return theta;
+
+			this.ctx.save();
+			//rotate canvas around top left point 
+			this.ctx.translate( curTopLeftX, curTopLeftY );
+			this.ctx.rotate( /*rotationAmountInRadians*/ theta );
+			this.ctx.translate( -curTopLeftX, -curTopLeftY );
+
+			//draw image
+			this.ctx.rect(curTopLeftX, curTopLeftY, curWidth, curHeight);
+			
+			try{
+				this.ctx.drawImage(this.img, curTopLeftX, curTopLeftY, curWidth, curHeight);
+				this.ctx.stroke();
+			}
+			catch(e) //draw image error
+			{
+				console.log("Image drawing error: " + e);
+			}
+
+			this.ctx.restore(); //restore rotation
 		}
-
-		
-
-		this.ctx.restore(); //restore rotation
 	}
 
 	//return the calculated top left X position of the point
@@ -1033,6 +1052,7 @@ class CanvasMapEdge{
 	//zoom: number;
 	color: string;
 	selectColor: string;
+	selectColorOtherFloor: string;
 	textColor: string;
 	textBackColor: string;
 	
@@ -1048,6 +1068,7 @@ class CanvasMapEdge{
 		//this.zoom = 10; //multiplier for zooming in
 		this.color = '#000000'; //default color
 		this.selectColor = '#ff1414'; //color when selected
+		this.selectColorOtherFloor = '#fc8046'; //color when selected but exists on another floor
 		this.textColor = '#ffffff';//'#f50'; //color of the text
 		this.textBackColor = '#000000'; //color of text background
 		
@@ -1103,18 +1124,18 @@ class CanvasMapEdge{
 		
 		//latitude is y coordinates
 		//longitude is x coordinates 
-		lat1 = this.node1.mapVertex.yPos;
-		lon1 = this.node1.mapVertex.xPos;
-		lat2 = this.node2.mapVertex.yPos;
-		lon2 = this.node2.mapVertex.xPos;
+		var lat1 = this.node1.mapVertex.yPos;
+		var lon1 = this.node1.mapVertex.xPos;
+		var lat2 = this.node2.mapVertex.yPos;
+		var lon2 = this.node2.mapVertex.xPos;
 		
 		var earthRadiusKm = 6371;
 
-		var dLat = degreesToRadians(lat2-lat1);
-		var dLon = degreesToRadians(lon2-lon1);
+		var dLat = this.degreesToRadians(lat2-lat1);
+		var dLon = this.degreesToRadians(lon2-lon1);
 
-		lat1 = degreesToRadians(lat1);
-		lat2 = degreesToRadians(lat2);
+		lat1 = this.degreesToRadians(lat1);
+		lat2 = this.degreesToRadians(lat2);
 
 		var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.sin(dLon/2) * Math.sin(dLon/2) * Math.cos(lat1) * Math.cos(lat2); 
 		var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
@@ -1150,12 +1171,21 @@ class CanvasMapEdge{
 	
 	public draw()
 	{
+		if(this.node1.mapVertex.floor == this.mapTransforms.getFloor() || this.node2.mapVertex.floor == this.mapTransforms.getFloor() || this.isSelected) //make sure at least 1 node is on the current floor, or it is part of the selected path
+		{
 		this.ctx.beginPath();
 		this.ctx.lineCap="round";
 		if(this.isSelected)
 		{
 			this.ctx.lineWidth=5;
-			this.ctx.strokeStyle = this.selectColor;
+			if(this.node1.mapVertex.floor == this.mapTransforms.getFloor() && this.node2.mapVertex.floor == this.mapTransforms.getFloor()) //both nodes exist on the current floor
+			{
+				this.ctx.strokeStyle = this.selectColor;
+			}
+			else //at least one node is on another floor
+			{
+				this.ctx.strokeStyle = this.selectColorOtherFloor;
+			}
 		}
 		else
 		{
@@ -1168,6 +1198,7 @@ class CanvasMapEdge{
 		this.ctx.closePath();
 		
 		//this.drawDistance();
+		}
 	}
 	
 	//call this to update this MapEdge's selected boolean to true
@@ -1194,7 +1225,8 @@ class CanvasMapEdge{
 
 
 
-/*A simple class for holding transformation data, specifically: zoom level, rotation, rotation point(x,y), and x&y offset*/
+/*A simple class for holding transformation data, specifically: zoom level, rotation, rotation point(x,y), and x&y offset.
+For now, also holds map options for currently selected floor*/
 class MapTransforms{
 	private zoom: number;
 	private rotation: number;
@@ -1202,6 +1234,8 @@ class MapTransforms{
 	private rotateY: number; //rotation point Y
 	private xOffset: number;
 	private yOffset: number;
+
+	private floor: number;
 	
 	public getZoom(){return this.zoom;}
 	public getRotation(){return this.rotation;}
@@ -1209,6 +1243,9 @@ class MapTransforms{
 	public getRotateY(){return this.rotateY;}
 	public getXOffset(){return this.xOffset;}
 	public getYOffset(){return this.yOffset;}
+
+	public getFloor(){return this.floor;}
+	public setFloor(_floor: number) {this.floor = _floor;}
 	
 	public setZoom(_zoom: number)
 	{ 
@@ -1325,6 +1362,8 @@ class MapTransforms{
 		this.rotateX = 0;
 		this.rotateY = 0;
 		//console.log(math.multiply(this.matrix, -1));
+
+		this.floor = 1; //default to 1st floor
 	}
 
 	/*calculate the real matrix now*/

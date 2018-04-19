@@ -23,7 +23,20 @@
 		</div>
 	</div>
 	
-	<div class="card" *ngIf="!isEditing">
+
+	<div class="card">
+		<h4 class="card-header">Options</h4>
+		<div class="card-body">
+			<div [formGroup]="selectOptionsForm">
+				<label>1st Floor<input name="selectfloor" type="radio" [value]="1" [(ngModel)]="floormodel" formControlName="selectfloor"></label>
+				<label>2nd Floor<input name="selectfloor" type="radio" [value]="2" [(ngModel)]="floormodel" formControlName="selectfloor"></label>
+			</div>
+			<p>Selected floor: {{floormodel}}</p>
+		</div>
+	</div>
+
+
+	<div class="card">
 		<h4 class="card-header">Path Data</h4>
 		<div class="card-body">
 			<p *ngIf="startPoint > 0">Selected Start Point: {{startPoint}}</p>
@@ -32,7 +45,7 @@
 				<p *ngIf="endPoint <= 0">Selected End Point: None</p>
 			<p *ngIf="dijkstraPath.length > 0">Final Path ({{dijkstraPath.length}} Nodes): </p>
 			<ul>
-				<li *ngFor="let vertex of dijkstraPath.slice().reverse()">ID: {{vertex.vertex.id}}; Distance: {{vertex.totalDistance}}</li>
+				<li *ngFor="let vertex of dijkstraPath.slice().reverse()">ID: {{vertex.vertex.id}}; Name: {{vertex.vertex.name}}; Floor: {{vertex.vertex.floor}}; Distance: {{vertex.totalDistance}}</li>
 			</ul>
 		</div>
 	</div>
@@ -45,6 +58,8 @@
 			<th scope="col">X position</th>
 			<th scope="col">Y position</th>
 			<th scope="col">Floor</th>
+			<th scope="col">Name</th>
+			<th scope="col">Location</th>
         </tr>
       </thead>
       <tbody *ngIf="vertices.length === 0">
@@ -59,6 +74,8 @@
 				<td>{{vertex.xPos}}</td>
 				<td>{{vertex.yPos}}</td>
 				<td>{{vertex.floor}}</td>
+				<td>{{vertex.name}}</td>
+				<td>{{vertex.location}}</td>
 		  </ng-container>
         </tr>  
       </tbody>
@@ -70,6 +87,7 @@
 			<th scope="col">Edge _ID</th>
 			<th scope="col">Node 1</th>
 			<th scope="col">Node 2</th>
+			<th scope="col">Travel type</th>
         </tr>
       </thead>
       <tbody *ngIf="mapEdges.length === 0">
@@ -83,6 +101,7 @@
 				<td>{{edge._id}}</td>
 				<td>{{edge.node1}}</td>
 				<td>{{edge.node2}}</td>
+				<td>{{edge.traveltype}}</td>
 		  </ng-container>
         </tr>  
       </tbody>
